@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Operation10</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0d1523;
+      min-height: 100vh;
+      display: flex;
+      align-items: stretch;
+      color: #c8d8f0;
+    }
+
+    .wrap {
+      display: flex;
+      width: 100%;
+      min-height: 100vh;
+    }
+
+    /* === SIDEBAR === */
+    .sidebar {
+      width: 220px;
+      min-width: 220px;
+      background: #080e1a;
+      display: flex;
+      flex-direction: column;
+      padding: 20px 14px;
+      gap: 4px;
+      border-right: 1px solid #1a2a42;
+      position: fixed;
+      top: 0;
+      left: 0;
+      height: 100vh;
+    }
+
+    .brand {
+      padding: 6px 10px 22px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .brand-icon {
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      background: #4a7c20;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      color: #c5e88a;
+    }
+
+    .brand-name {
+      font-size: 14px;
+      font-weight: 500;
+      color: #e8f0ff;
+      line-height: 1.2;
+    }
+
+    .brand-sub {
+      font-size: 11px;
+      color: #4a6080;
+      margin-top: 2px;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      color: #6a8aaa;
+      font-size: 13px;
+      transition: all 0.15s;
+      border: none;
+      background: none;
+      font-family: inherit;
+      width: 100%;
+      text-align: left;
+    }
+
+    .nav-item i { font-size: 17px; flex-shrink: 0; }
+    .nav-item:hover { color: #d0cfca; background: #172033; }
+    .nav-item.active { color: #c5e88a; background: #1e2e14; }
+
+    .sidebar-footer {
+      margin-top: auto;
+      padding-top: 16px;
+      border-top: 1px solid #1e3050;
+    }
+
+    .day-badge {
+      background: #172033;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 11px;
+      color: #4a6080;
+      line-height: 1.7;
+    }
+
+    .day-badge strong {
+      color: #6a8aaa;
+      display: block;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    /* === MAIN === */
+    .main {
+      flex: 1;
+      background: #111d2e;
+      margin-left: 220px;
+      min-height: 100vh;
+      overflow-y: auto;
+    }
+
+    .tab { display: none; padding: 28px 48px; max-width: 1100px; width: 100%; margin: 0 auto; }
+    .tab.active { display: block; }
+
+    .page-title { font-size: 20px; font-weight: 500; color: #e8f0ff; margin-bottom: 4px; }
+    .page-sub { font-size: 13px; color: #4a6080; margin-bottom: 24px; }
+
+    .stat-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-bottom: 24px;
+    }
+
+    .stat-card {
+      background: #172033;
+      border: 1px solid #1e3050;
+      border-radius: 10px;
+      padding: 14px 16px;
+    }
+
+    .stat-val { font-size: 22px; font-weight: 500; color: #e8f0ff; }
+    .stat-lbl { font-size: 11px; color: #4a6080; margin-top: 3px; }
+
+    .stat-card.accent { border-color: #2d4a14; background: #141e0c; }
+    .stat-card.accent .stat-val { color: #c5e88a; }
+
+    .section-head {
+      font-size: 11px;
+      font-weight: 500;
+      color: #4a6080;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      margin-bottom: 10px;
+      margin-top: 20px;
+    }
+
+    .section-head:first-of-type { margin-top: 0; }
+
+    .card {
+      background: #172033;
+      border: 1px solid #1e3050;
+      border-radius: 10px;
+      padding: 14px 16px;
+      margin-bottom: 10px;
+    }
+
+    /* === TODO === */
+    .todo-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 9px 0;
+      border-bottom: 1px solid #1a2a42;
+    }
+
+    .todo-item:last-child { border-bottom: none; padding-bottom: 0; }
+    .todo-item:first-child { padding-top: 0; }
+
+    .cb {
+      width: 18px;
+      height: 18px;
+      border-radius: 5px;
+      border: 1.5px solid #2a3e5a;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .cb.done { background: #4a7c20; border-color: #4a7c20; }
+
+    .cb.done::after {
+      content: '';
+      width: 5px;
+      height: 9px;
+      border: 2px solid #c5e88a;
+      border-left: none;
+      border-top: none;
+      transform: rotate(45deg) translate(-1px, -1px);
+      display: block;
+    }
+
+    .todo-text { font-size: 14px; color: #c8d8f0; flex: 1; }
+    .todo-text.done { color: #2a3e5a; text-decoration: line-through; }
+
+    .pill {
+      font-size: 11px;
+      padding: 3px 9px;
+      border-radius: 6px;
+      white-space: nowrap;
+    }
+
+    .pill-green { background: #1a2e0e; color: #7ab840; }
+    .pill-blue  { background: #0c1e36; color: #5a9de0; }
+    .pill-amber { background: #2e1e06; color: #e0a040; }
+
+    /* === SPORT === */
+    .contract-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: #5a9de0;
+      background: #0c1e36;
+      border: 1px solid #1a3a5c;
+      border-radius: 6px;
+      padding: 5px 12px;
+      margin-bottom: 12px;
+    }
+
+    .session-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid #1a2a42;
+    }
+
+    .session-row:last-child { border-bottom: none; padding-bottom: 0; }
+    .session-row:first-child { padding-top: 0; }
+
+    .sess-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+
+    .si-s { background: #1a2e0e; color: #7ab840; }
+    .si-c { background: #0c1e36; color: #5a9de0; }
+    .si-e { background: #2e1e06; color: #e0a040; }
+
+    .sess-info { flex: 1; }
+    .sess-name { font-size: 14px; font-weight: 500; color: #c8d8f0; }
+    .sess-meta { font-size: 12px; color: #4a6080; margin-top: 2px; }
+
+    .sess-tag {
+      font-size: 11px;
+      padding: 3px 9px;
+      border-radius: 6px;
+    }
+
+    .tag-done { background: #1a2e0e; color: #7ab840; }
+    .tag-plan { background: #1a2a42; color: #4a6080; }
+
+    /* === NUTRITION === */
+    .add-food {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .food-input {
+      flex: 1;
+      background: #1a2a42;
+      border: 1px solid #2a3e5a;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 14px;
+      color: #c8d8f0;
+      outline: none;
+      font-family: inherit;
+      transition: border-color 0.15s;
+    }
+
+    .food-input::placeholder { color: #2a3e5a; }
+    .food-input:focus { border-color: #4a7c20; }
+
+    .food-btn {
+      background: #4a7c20;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 18px;
+      font-size: 13px;
+      color: #c5e88a;
+      cursor: pointer;
+      font-family: inherit;
+      font-weight: 500;
+      transition: background 0.15s;
+    }
+
+    .food-btn:hover { background: #3b6311; }
+
+    .photo-btn {
+      background: #1a2a42;
+      border: 1px solid #2a3e5a;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 17px;
+      cursor: pointer;
+      color: #c8d8f0;
+      display: flex;
+      align-items: center;
+      transition: background 0.15s;
+    }
+
+    .photo-btn:hover { background: #2e2e2c; }
+
+    .photo-mockup {
+      background: #141e0c;
+      border: 1px solid #2d4a14;
+      border-radius: 10px;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 10px;
+    }
+
+    .photo-icon {
+      width: 42px;
+      height: 42px;
+      border-radius: 8px;
+      background: #1e2e14;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      color: #7ab840;
+      flex-shrink: 0;
+    }
+
+    .photo-text { font-size: 14px; color: #c8d8f0; font-weight: 500; }
+    .photo-sub  { font-size: 12px; color: #4a6080; margin-top: 3px; }
+
+    .macro-wrap { margin-bottom: 12px; }
+    .macro-wrap:last-child { margin-bottom: 0; }
+
+    .macro-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+      margin-bottom: 5px;
+    }
+
+    .macro-row span:first-child { color: #c8d8f0; }
+    .macro-row span:last-child  { color: #4a6080; }
+
+    .bar-track {
+      height: 6px;
+      background: #1a2a42;
+      border-radius: 99px;
+      overflow: hidden;
+    }
+
+    .bar-fill { height: 100%; border-radius: 99px; }
+    .bf-p { background: #4a7c20; }
+    .bf-c { background: #2a5aa0; }
+    .bf-f { background: #a06020; }
+
+    .meal-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid #1a2a42;
+      font-size: 14px;
+    }
+
+    .meal-row:first-child { padding-top: 0; }
+    .meal-row:last-child  { border-bottom: none; }
+
+    .meal-name  { color: #c8d8f0; }
+    .meal-kcal  { color: #4a6080; font-size: 13px; }
+
+    .add-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      font-size: 13px;
+      color: #2a3e5a;
+      border: 1px dashed #1e3050;
+      border-radius: 8px;
+      padding: 10px;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: all 0.15s;
+      background: none;
+      font-family: inherit;
+      width: 100%;
+    }
+
+    .add-row:hover { color: #6a8aaa; border-color: #2a3e5a; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-icon"><i class="ti ti-flame" aria-hidden="true"></i></div>
+        <div>
+          <div class="brand-name">Operation10</div>
+          <div class="brand-sub">Rennes · 10 mois</div>
+        </div>
+      </div>
+
+      <button class="nav-item active" onclick="go('todo', this)">
+        <i class="ti ti-checks" aria-hidden="true"></i> Todo
+      </button>
+      <button class="nav-item" onclick="go('sport', this)">
+        <i class="ti ti-barbell" aria-hidden="true"></i> Sport
+      </button>
+      <button class="nav-item" onclick="go('nutrition', this)">
+        <i class="ti ti-salad" aria-hidden="true"></i> Nutrition
+      </button>
+
+      <div class="sidebar-footer">
+        <div class="day-badge">
+          <strong>Semaine 3 / 43</strong>
+          Mer 27 mai 2026
+        </div>
+      </div>
+    </aside>
+
+    <div class="main">
+
+      <!-- TODO -->
+      <div id="tab-todo" class="tab active">
+        <p class="page-title">Todo du jour</p>
+        <p class="page-sub">Mercredi 27 mai — 2 / 7 complétées</p>
+
+        <p class="section-head">Quotidien</p>
+        <div class="card">
+          <div class="todo-item">
+            <div class="cb done"></div>
+            <span class="todo-text done">EMOM 10 min — pompes 15 reps / min</span>
+            <span class="pill pill-green">Quotidien</span>
+          </div>
+          <div class="todo-item">
+            <div class="cb done"></div>
+            <span class="todo-text done">Séance sport du matin</span>
+            <span class="pill pill-green">Quotidien</span>
+          </div>
+          <div class="todo-item">
+            <div class="cb"></div>
+            <span class="todo-text">Logger mes repas</span>
+            <span class="pill pill-green">Quotidien</span>
+          </div>
+          <div class="todo-item">
+            <div class="cb"></div>
+            <span class="todo-text">Révisions cours du soir</span>
+            <span class="pill pill-green">Quotidien</span>
+          </div>
+        </div>
+
+        <p class="section-head">Stage / Formation</p>
+        <div class="card">
+          <div class="todo-item">
+            <div class="cb done"></div>
+            <span class="todo-text done">Compte-rendu de la semaine</span>
+            <span class="pill pill-blue">Stage</span>
+          </div>
+          <div class="todo-item">
+            <div class="cb"></div>
+            <span class="todo-text">Préparer présentation projet</span>
+            <span class="pill pill-blue">Stage</span>
+          </div>
+          <div class="todo-item">
+            <div class="cb"></div>
+            <span class="todo-text">Finir module React avancé</span>
+            <span class="pill pill-blue">Stage</span>
+          </div>
+        </div>
+
+        <button class="add-row"><i class="ti ti-plus" aria-hidden="true"></i> Ajouter une tâche</button>
+      </div>
+
+      <!-- SPORT -->
+      <div id="tab-sport" class="tab">
+        <p class="page-title">Sport</p>
+        <p class="page-sub">Semaine 3 — 3 séances réalisées sur 4 prévues</p>
+
+        <div class="stat-row">
+          <div class="stat-card accent"><div class="stat-val">23</div><div class="stat-lbl">Séances ce mois</div></div>
+          <div class="stat-card"><div class="stat-val">150</div><div class="stat-lbl">Pompes aujourd'hui</div></div>
+          <div class="stat-card"><div class="stat-val">87%</div><div class="stat-lbl">Assiduité totale</div></div>
+        </div>
+
+        <div class="contract-badge">
+          <i class="ti ti-file-check" style="font-size:13px" aria-hidden="true"></i>
+          Programme type — ton contrat hebdomadaire
+        </div>
+
+        <p class="section-head">Séances types (contrat)</p>
+        <div class="card">
+          <div class="session-row">
+            <div class="sess-icon si-s"><i class="ti ti-barbell" aria-hidden="true"></i></div>
+            <div class="sess-info">
+              <div class="sess-name">Musculation — Push</div>
+              <div class="sess-meta">Lundi · 60 min · Pectoraux, épaules, triceps</div>
+            </div>
+            <span class="pill pill-green">Contrat</span>
+          </div>
+          <div class="session-row">
+            <div class="sess-icon si-e"><i class="ti ti-flame" aria-hidden="true"></i></div>
+            <div class="sess-info">
+              <div class="sess-name">EMOM pompes</div>
+              <div class="sess-meta">Tous les jours · 10 min · 15 reps / min</div>
+            </div>
+            <span class="pill pill-amber">Contrat</span>
+          </div>
+          <div class="session-row">
+            <div class="sess-icon si-s"><i class="ti ti-barbell" aria-hidden="true"></i></div>
+            <div class="sess-info">
+              <div class="sess-name">Musculation — Pull</div>
+              <div class="sess-meta">Mercredi · 60 min · Dos, biceps</div>
+            </div>
+            <span class="pill pill-green">Contrat</span>
+          </div>
+          <div class="session-row">
+            <div class="sess-icon si-c"><i class="ti ti-run" aria-hidden="true"></i></div>
+            <div class="sess-info">
+              <div class="sess-name">Cardio — Course</div>
+              <div class="sess-meta">Vendredi · 30–45 min</div>
+            </div>
+            <span class="pill pill-blue">Contrat</span>
+          </div>
+        </div>
+
+        <p class="section-head">Séances réalisées cette semaine</p>
+        <div class="card">
+          <div class="session-row">
+            <div class="sess-icon si-s"><i class="ti ti-barbell" aria-hidden="true"></i></div>
+            <div class="sess-info">
+              <div class="sess-name">Push — Lundi 25 mai</div>
+              <div class="sess-meta">62 min · Bench 80 kg · Développé militaire 50 kg</div>
+            </div>
+            <span class="sess-tag tag-done">Réalisé</span>
+          </div>
+          <div class="session-row">
+            <div class="sess-icon si-e"><i class="ti ti-flame" aria-hidden="true"></i></div>
+            <div class="sess-info">
+              <div class="sess-name">EMOM — Mardi 26 mai</div>
+              <div class="sess-meta">10 min · 150 pompes au total</div>
+            </div>
+            <span class="sess-tag tag-done">Réalisé</span>
+          </div>
+          <div class="session-row">
+            <div class="sess-icon si-s"><i class="ti ti-barbell" aria-hidden="true"></i></div>
+            <div class="sess-info">
+              <div class="sess-name">Pull — Mercredi 27 mai</div>
+              <div class="sess-meta">Aujourd'hui · planifié</div>
+            </div>
+            <span class="sess-tag tag-plan">Planifié</span>
+          </div>
+        </div>
+
+        <button class="add-row"><i class="ti ti-plus" aria-hidden="true"></i> Logger une séance</button>
+      </div>
+
+      <!-- NUTRITION -->
+      <div id="tab-nutrition" class="tab">
+        <p class="page-title">Nutrition</p>
+        <p class="page-sub">Mercredi 27 mai — 2 180 / 2 500 kcal</p>
+
+        <div class="stat-row">
+          <div class="stat-card accent"><div class="stat-val">2 180</div><div class="stat-lbl">kcal aujourd'hui</div></div>
+          <div class="stat-card"><div class="stat-val">165 g</div><div class="stat-lbl">Protéines</div></div>
+          <div class="stat-card"><div class="stat-val">320</div><div class="stat-lbl">kcal restantes</div></div>
+        </div>
+
+        <p class="section-head">Ajouter un aliment</p>
+        <div class="add-food">
+          <input class="food-input" type="text" placeholder="Ex : 200g de blanc de poulet…" />
+          <button class="food-btn">Ajouter</button>
+          <button class="photo-btn" title="Analyser une photo de repas">
+            <i class="ti ti-camera" aria-hidden="true"></i>
+          </button>
+        </div>
+
+        <div class="photo-mockup">
+          <div class="photo-icon"><i class="ti ti-camera" aria-hidden="true"></i></div>
+          <div>
+            <div class="photo-text">Analyse photo de repas</div>
+            <div class="photo-sub">Envoie une photo — l'IA estime les macros automatiquement</div>
+          </div>
+        </div>
+
+        <p class="section-head">Macros du jour</p>
+        <div class="card" style="margin-bottom: 14px;">
+          <div class="macro-wrap">
+            <div class="macro-row"><span>Protéines</span><span>165 g / 180 g</span></div>
+            <div class="bar-track"><div class="bar-fill bf-p" style="width:92%"></div></div>
+          </div>
+          <div class="macro-wrap" style="margin-top: 12px;">
+            <div class="macro-row"><span>Glucides</span><span>210 g / 250 g</span></div>
+            <div class="bar-track"><div class="bar-fill bf-c" style="width:84%"></div></div>
+          </div>
+          <div class="macro-wrap" style="margin-top: 12px;">
+            <div class="macro-row"><span>Lipides</span><span>65 g / 80 g</span></div>
+            <div class="bar-track"><div class="bar-fill bf-f" style="width:81%"></div></div>
+          </div>
+        </div>
+
+        <p class="section-head">Repas du jour</p>
+        <div class="card">
+          <div class="meal-row">
+            <span class="meal-name">Petit déjeuner — avoine + œufs</span>
+            <span class="meal-kcal">520 kcal</span>
+          </div>
+          <div class="meal-row">
+            <span class="meal-name">Déjeuner — poulet riz brocolis</span>
+            <span class="meal-kcal">780 kcal</span>
+          </div>
+          <div class="meal-row">
+            <span class="meal-name">Collation — fromage blanc + fruits</span>
+            <span class="meal-kcal">320 kcal</span>
+          </div>
+          <div class="meal-row">
+            <span class="meal-name">Dîner — saumon patate douce</span>
+            <span class="meal-kcal">560 kcal</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    function go(tab, btn) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.getElementById('tab-' + tab).classList.add('active');
+      document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    }
+
+    document.querySelectorAll('.cb').forEach(cb => {
+      cb.addEventListener('click', () => {
+        const done = cb.classList.toggle('done');
+        const text = cb.nextElementSibling;
+        if (text) text.classList.toggle('done', done);
+      });
+    });
+  </script>
+</body>
+</html>
