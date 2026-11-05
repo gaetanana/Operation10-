@@ -4,9 +4,9 @@ services:
     container_name: operation10-db
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER:-operation10}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+      POSTGRES_DB: ${DB_NAME:-operation10_db}
     ports:
       - '5432:5432'
     volumes:
@@ -23,8 +23,10 @@ services:
     depends_on:
       - postgres
     environment:
-      DATABASE_URL: postgresql://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}
-      JWT_SECRET: ${JWT_SECRET}
+      DATABASE_URL: postgresql://${DB_USER:-operation10}:${DB_PASSWORD:-changeme}@postgres:5432/${DB_NAME:-operation10_db}
+      APP_PASSWORD_HASH: ${APP_PASSWORD_HASH}
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:5173}
+      NODE_ENV: development
       PORT: 3000
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
     ports:

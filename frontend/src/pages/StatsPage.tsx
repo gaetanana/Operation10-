@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '../services/api';
+import { getLocalDateString } from '../utils/date';
 
 const TYPE_LABELS: Record<string, { label: string; color: string }> = {
   pecs_triceps: { label: 'Pecs / Triceps', color: '#d070ff' },
@@ -93,8 +94,8 @@ export default function StatsPage() {
   });
 
   const { data: nutritionTotals } = useQuery({
-    queryKey: ['totals', new Date().toISOString().split('T')[0]],
-    queryFn: () => api.get(`/nutrition/totals?date=${new Date().toISOString().split('T')[0]}`).then(r => r.data),
+    queryKey: ['totals', getLocalDateString()],
+    queryFn: () => api.get(`/nutrition/totals?date=${getLocalDateString()}`).then(r => r.data),
   });
 
   const byType: Record<string, number> = stats?.byType ?? {};

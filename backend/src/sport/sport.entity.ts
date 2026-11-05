@@ -91,7 +91,7 @@ export class Exercise {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column()
+  @Column('uuid')
   sessionId: string;
 
   @ManyToOne(() => Session, (s) => s.exercises, { onDelete: 'CASCADE' })

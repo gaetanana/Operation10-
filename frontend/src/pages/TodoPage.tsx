@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
+import { getLocalDateString } from '../utils/date';
 
-const today = new Date().toISOString().split('T')[0];
+const today = getLocalDateString();
 
 export default function TodoPage() {
   const qc = useQueryClient();
@@ -78,7 +79,14 @@ export default function TodoPage() {
             {daily.length === 0 && <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>Aucune tâche quotidienne.</p>}
             {daily.map((t: any) => (
               <div key={t.id} className="todo-item">
-                <div className={`cb${t.completed ? ' done' : ''}`} onClick={() => toggle.mutate(t.id)} />
+                <button
+                  type="button"
+                  role="checkbox"
+                  aria-checked={t.completed}
+                  aria-label={`${t.completed ? 'Marquer comme non terminée' : 'Terminer'} : ${t.title}`}
+                  className={`cb${t.completed ? ' done' : ''}`}
+                  onClick={() => toggle.mutate(t.id)}
+                />
                 <span className={`todo-text${t.completed ? ' done' : ''}`}>{t.title}</span>
                 <span className="pill pill-green">Quotidien</span>
                 <button onClick={() => remove.mutate(t.id)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 15, marginLeft: 4 }}>
@@ -94,7 +102,14 @@ export default function TodoPage() {
             {stage.length === 0 && <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>Aucune tâche de stage.</p>}
             {stage.map((t: any) => (
               <div key={t.id} className="todo-item">
-                <div className={`cb${t.completed ? ' done' : ''}`} onClick={() => toggle.mutate(t.id)} />
+                <button
+                  type="button"
+                  role="checkbox"
+                  aria-checked={t.completed}
+                  aria-label={`${t.completed ? 'Marquer comme non terminée' : 'Terminer'} : ${t.title}`}
+                  className={`cb${t.completed ? ' done' : ''}`}
+                  onClick={() => toggle.mutate(t.id)}
+                />
                 <span className={`todo-text${t.completed ? ' done' : ''}`}>{t.title}</span>
                 <span className="pill pill-blue">Stage</span>
                 <button onClick={() => remove.mutate(t.id)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 15, marginLeft: 4 }}>

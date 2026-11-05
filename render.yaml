@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: operation10-personal
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/auth/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: APP_ORIGIN
+        value: https://operation10-personal.onrender.com
+      - key: DATABASE_URL
+        sync: false
+      - key: APP_PASSWORD_HASH
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false

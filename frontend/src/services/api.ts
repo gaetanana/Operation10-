@@ -12,6 +12,22 @@ const base = env && !env.includes('localhost')
 const api = axios.create({
   baseURL: `${base}/api`,
   headers: { 'Content-Type': 'application/json' },
+  withCredentials: true,
 });
+
+api.interceptors.response.use(
+  response => response,
+  error => {
+    if (
+      axios.isAxiosError(error) &&
+      error.response?.status === 401 &&
+      !error.config?.url?.includes('/auth/login') &&
+      !error.config?.url?.includes('/auth/session')
+    ) {
+      window.dispatchEvent(new Event('operation10:session-expired'));
+    }
+    return Promise.reject(error);
+  },
+);
 
 export default api;

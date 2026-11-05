@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
+import { getLocalDateString } from '../utils/date';
 
-const today = new Date().toISOString().split('T')[0];
+const today = getLocalDateString();
 
 export const TYPE_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
   pecs_triceps: { label: 'Pecs / Triceps', color: 'si-pt', icon: 'ti-barbell' },

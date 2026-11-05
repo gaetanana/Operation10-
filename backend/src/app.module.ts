@@ -8,17 +8,21 @@ import { RevisionModule } from './revision/revision.module';
 import { SeedService } from './seed.service';
 import { Todo } from './todo/todo.entity';
 import { SessionTemplate, Exercise } from './sport/sport.entity';
+import { AuthModule } from './auth/auth.module';
+import { InitialSchema1762369200000 } from './migrations/1762369200000-InitialSchema';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({ isGlobal: true, envFilePath: ['../.env', '.env'] }),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         type: 'postgres',
         url: config.get<string>('DATABASE_URL'),
         autoLoadEntities: true,
-        synchronize: true,
+        synchronize: config.get<string>('NODE_ENV') !== 'production',
+        migrations: [InitialSchema1762369200000],
+        migrationsRun: config.get<string>('NODE_ENV') === 'production',
       }),
     }),
     TypeOrmModule.forFeature([Todo, SessionTemplate, Exercise]),
@@ -26,6 +30,7 @@ import { SessionTemplate, Exercise } from './sport/sport.entity';
     SportModule,
     NutritionModule,
     RevisionModule,
+    AuthModule,
   ],
   providers: [SeedService],
 })
