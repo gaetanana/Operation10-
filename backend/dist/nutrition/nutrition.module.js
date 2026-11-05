@@ -17,7 +17,7 @@ let NutritionModule = class NutritionModule {
 exports.NutritionModule = NutritionModule;
 exports.NutritionModule = NutritionModule = __decorate([
     (0, common_1.Module)({
-        imports: [typeorm_1.TypeOrmModule.forFeature([nutrition_entity_1.Meal])],
+        imports: [typeorm_1.TypeOrmModule.forFeature([nutrition_entity_1.Meal, nutrition_entity_1.MealFavorite])],
         providers: [nutrition_service_1.NutritionService],
         controllers: [nutrition_controller_1.NutritionController],
     })

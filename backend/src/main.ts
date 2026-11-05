@@ -10,7 +10,9 @@ async function bootstrap() {
   app.use(require('express').json({ limit: '10mb' }));
   app.use(require('express').urlencoded({ limit: '10mb', extended: true }));
 
-  app.enableCors({ origin: ['http://localhost:5173', 'http://localhost:3000'], credentials: true });
+  // Reflète l'origine de la requête : permet l'accès depuis le téléphone sur le réseau local
+  // (app perso, pas exposée sur Internet).
+  app.enableCors({ origin: true, credentials: true });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.setGlobalPrefix('api');
 

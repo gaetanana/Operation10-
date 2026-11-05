@@ -2,7 +2,8 @@ import { SessionType } from './sport.entity';
 export declare class CreateTemplateDto {
     name: string;
     type: SessionType;
-    dayOfWeek: number;
+    dayOfWeek?: number;
+    weeklyTarget?: number;
     durationMinutes?: number;
     description?: string;
 }
@@ -10,6 +11,7 @@ export declare class UpdateTemplateDto {
     name?: string;
     type?: SessionType;
     dayOfWeek?: number;
+    weeklyTarget?: number;
     durationMinutes?: number;
     description?: string;
 }

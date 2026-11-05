@@ -24,3 +24,16 @@ export declare class Meal {
     }[];
     createdAt: Date;
 }
+export declare class MealFavorite {
+    id: string;
+    name: string;
+    entries: {
+        name: string;
+        mealType: MealType;
+        calories: number;
+        proteins: number;
+        carbs: number;
+        fats: number;
+    }[];
+    createdAt: Date;
+}

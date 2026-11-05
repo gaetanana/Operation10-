@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsEnum, IsDateString, IsArray, ValidateNested, Min, MinLength } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsEnum, IsDateString, IsArray, ValidateNested, Min, Max, MinLength } from 'class-validator';
 import { Type } from 'class-transformer';
 import { SessionType } from './sport.entity';
 
@@ -12,8 +12,15 @@ export class CreateTemplateDto {
   @IsEnum(SessionType)
   type: SessionType;
 
+  @IsOptional()
   @IsNumber()
-  dayOfWeek: number; // -1 = quotidien, 0-6 = lun-dim
+  dayOfWeek?: number; // déprécié
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(14)
+  weeklyTarget?: number; // séances/semaine visées
 
   @IsOptional()
   @IsNumber()
@@ -38,6 +45,12 @@ export class UpdateTemplateDto {
   @IsOptional()
   @IsNumber()
   dayOfWeek?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(14)
+  weeklyTarget?: number;
 
   @IsOptional()
   @IsNumber()

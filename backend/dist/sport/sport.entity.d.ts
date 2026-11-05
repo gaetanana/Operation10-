@@ -14,6 +14,7 @@ export declare class SessionTemplate {
     name: string;
     type: SessionType;
     dayOfWeek: number;
+    weeklyTarget: number;
     durationMinutes: number;
     description: string;
     templateExercises: {

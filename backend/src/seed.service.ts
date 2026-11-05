@@ -121,6 +121,7 @@ export class SeedService implements OnApplicationBootstrap {
         name: 'EMOM pompes',
         type: SessionType.EMOM,
         dayOfWeek: -1, // Tous les jours
+        weeklyTarget: 7,
         durationMinutes: 10,
         description: '15 reps / min pendant 10 min — quotidien',
       },
@@ -180,5 +181,11 @@ export class SeedService implements OnApplicationBootstrap {
       await this.templateRepo.save({ ...jambes, dayOfWeek: 2 });
       this.logger.log('🔄 Jambes déplacé au mercredi');
     }
+
+    // Backfill objectif hebdo : l'EMOM quotidien vise 7 séances/semaine
+    await this.templateRepo.update(
+      { type: SessionType.EMOM, weeklyTarget: 1 } as any,
+      { weeklyTarget: 7 } as any,
+    );
   }
 }

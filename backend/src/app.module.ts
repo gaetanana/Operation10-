@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { TodoModule } from './todo/todo.module';
 import { SportModule } from './sport/sport.module';
 import { NutritionModule } from './nutrition/nutrition.module';
+import { RevisionModule } from './revision/revision.module';
 import { SeedService } from './seed.service';
 import { Todo } from './todo/todo.entity';
 import { SessionTemplate, Exercise } from './sport/sport.entity';
@@ -24,6 +25,7 @@ import { SessionTemplate, Exercise } from './sport/sport.entity';
     TodoModule,
     SportModule,
     NutritionModule,
+    RevisionModule,
   ],
   providers: [SeedService],
 })

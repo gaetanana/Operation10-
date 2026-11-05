@@ -18,8 +18,60 @@ const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
 const nutrition_entity_1 = require("./nutrition.entity");
 let NutritionService = class NutritionService {
-    constructor(repo) {
+    constructor(repo, favRepo) {
         this.repo = repo;
+        this.favRepo = favRepo;
+    }
+    findFavorites() {
+        return this.favRepo.find({ order: { createdAt: 'DESC' } });
+    }
+    createFavorite(data) {
+        return this.favRepo.save(this.favRepo.create(data));
+    }
+    async removeFavorite(id) {
+        const f = await this.favRepo.findOneBy({ id });
+        if (!f)
+            throw new common_1.NotFoundException('Favori introuvable');
+        await this.favRepo.remove(f);
+    }
+    async applyFavorite(id, date) {
+        const fav = await this.favRepo.findOneBy({ id });
+        if (!fav)
+            throw new common_1.NotFoundException('Favori introuvable');
+        const meals = (fav.entries ?? []).map((e) => this.repo.create({
+            name: e.name,
+            date,
+            mealType: e.mealType,
+            calories: e.calories ?? 0,
+            proteins: e.proteins ?? 0,
+            carbs: e.carbs ?? 0,
+            fats: e.fats ?? 0,
+        }));
+        return meals.length ? this.repo.save(meals) : [];
+    }
+    async duplicateDay(from, to) {
+        const source = await this.findByDate(from);
+        const copies = source.map((m) => this.repo.create({
+            name: m.name, date: to, mealType: m.mealType,
+            calories: m.calories, proteins: m.proteins, carbs: m.carbs, fats: m.fats,
+            items: m.items ?? undefined,
+        }));
+        return copies.length ? this.repo.save(copies) : [];
+    }
+    async getRecent(limit = 12) {
+        const meals = await this.repo.find({ order: { createdAt: 'DESC' }, take: 200 });
+        const seen = new Set();
+        const out = [];
+        for (const m of meals) {
+            const key = m.name.trim().toLowerCase();
+            if (seen.has(key))
+                continue;
+            seen.add(key);
+            out.push({ name: m.name, calories: m.calories, proteins: m.proteins, carbs: m.carbs, fats: m.fats });
+            if (out.length >= limit)
+                break;
+        }
+        return out;
     }
     findByDate(date) {
         return this.repo.find({ where: { date }, order: { mealType: 'ASC', createdAt: 'ASC' } });
@@ -53,51 +105,53 @@ let NutritionService = class NutritionService {
             'User-Agent': 'Operation10-App/1.0 (gaetan.gonfiantini@gmail.com)',
             'Accept': 'application/json',
         };
-        const parseProducts = (products) => products
-            .filter((p) => p.product_name && (p.nutriments?.['energy-kcal_100g'] ?? 0) > 0)
-            .slice(0, 6)
-            .map((p) => ({
-            name: p.product_name + (p.brands ? ` (${p.brands.split(',')[0].trim()})` : ''),
-            calories: Math.round(p.nutriments?.['energy-kcal_100g'] ?? 0),
-            proteins: Math.round((p.nutriments?.proteins_100g ?? 0) * 10) / 10,
-            carbs: Math.round((p.nutriments?.carbohydrates_100g ?? 0) * 10) / 10,
-            fats: Math.round((p.nutriments?.fat_100g ?? 0) * 10) / 10,
-        }));
-        try {
-            const url = `https://world.openfoodfacts.org/api/v2/search?search_terms=${encodeURIComponent(query)}&page_size=10&fields=product_name,nutriments,brands`;
-            const res = await fetch(url, { headers, signal: AbortSignal.timeout(6000) });
-            if (res.ok) {
-                const text = await res.text();
-                if (text.trim().startsWith('{')) {
-                    const data = JSON.parse(text);
-                    const results = parseProducts(data.products ?? []);
-                    if (results.length > 0)
-                        return results;
+        const qTokens = query.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+            .replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter((w) => w.length > 1);
+        const norm = (s) => (s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+        const parseProducts = (products) => {
+            const mapped = products
+                .filter((p) => p.product_name && (p.nutriments?.['energy-kcal_100g'] ?? 0) > 0)
+                .map((p) => ({
+                name: p.product_name + (p.brands ? ` (${p.brands.split(',')[0].trim()})` : ''),
+                calories: Math.round(p.nutriments?.['energy-kcal_100g'] ?? 0),
+                proteins: Math.round((p.nutriments?.proteins_100g ?? 0) * 10) / 10,
+                carbs: Math.round((p.nutriments?.carbohydrates_100g ?? 0) * 10) / 10,
+                fats: Math.round((p.nutriments?.fat_100g ?? 0) * 10) / 10,
+            }));
+            const relevant = qTokens.length
+                ? mapped.filter((m) => qTokens.some((t) => norm(m.name).includes(t)))
+                : mapped;
+            return (relevant.length ? relevant : mapped).slice(0, 6);
+        };
+        const enc = encodeURIComponent(query);
+        const endpoints = [
+            `https://fr.openfoodfacts.org/cgi/search.pl?search_terms=${enc}&search_simple=1&action=process&json=1&page_size=24&sort_by=unique_scans_n`,
+            `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${enc}&search_simple=1&action=process&json=1&page_size=24&sort_by=unique_scans_n`,
+        ];
+        let lastErr = null;
+        for (const url of endpoints) {
+            try {
+                const res = await fetch(url, { headers, signal: AbortSignal.timeout(8000) });
+                if (!res.ok) {
+                    lastErr = new Error(`HTTP ${res.status}`);
+                    continue;
                 }
+                const text = await res.text();
+                if (!text.trim().startsWith('{')) {
+                    lastErr = new Error('Réponse invalide');
+                    continue;
+                }
+                const data = JSON.parse(text);
+                const results = parseProducts(data.products ?? []);
+                if (results.length > 0)
+                    return results;
+                lastErr = new Error('Aucun résultat');
+            }
+            catch (e) {
+                lastErr = e;
             }
         }
-        catch (_) { }
-        try {
-            const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=10`;
-            const res = await fetch(url, { headers, signal: AbortSignal.timeout(6000) });
-            if (res.ok) {
-                const text = await res.text();
-                if (text.trim().startsWith('{')) {
-                    const data = JSON.parse(text);
-                    return parseProducts(data.products ?? []);
-                }
-            }
-        }
-        catch (_) { }
-        const url = `https://fr.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=10`;
-        const res = await fetch(url, { headers, signal: AbortSignal.timeout(8000) });
-        if (!res.ok)
-            throw new Error(`Open Food Facts indisponible (${res.status}) — réessaie dans quelques secondes`);
-        const text = await res.text();
-        if (!text.trim().startsWith('{'))
-            throw new Error('Réponse invalide d\'Open Food Facts');
-        const data = JSON.parse(text);
-        return parseProducts(data.products ?? []);
+        throw new Error(`Open Food Facts indisponible (${lastErr?.message ?? 'erreur'}) — réessaie dans quelques secondes`);
     }
     async analyzeImage(base64Image, mediaType) {
         const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -187,6 +241,8 @@ exports.NutritionService = NutritionService;
 exports.NutritionService = NutritionService = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, typeorm_1.InjectRepository)(nutrition_entity_1.Meal)),
-    __metadata("design:paramtypes", [typeorm_2.Repository])
+    __param(1, (0, typeorm_1.InjectRepository)(nutrition_entity_1.MealFavorite)),
+    __metadata("design:paramtypes", [typeorm_2.Repository,
+        typeorm_2.Repository])
 ], NutritionService);
 //# sourceMappingURL=nutrition.service.js.map

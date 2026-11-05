@@ -1,11 +1,75 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Meal } from './nutrition.entity';
+import { Meal, MealFavorite } from './nutrition.entity';
 
 @Injectable()
 export class NutritionService {
-  constructor(@InjectRepository(Meal) private repo: Repository<Meal>) {}
+  constructor(
+    @InjectRepository(Meal) private repo: Repository<Meal>,
+    @InjectRepository(MealFavorite) private favRepo: Repository<MealFavorite>,
+  ) {}
+
+  // ─── Favoris / combos ──────────────────────────────────────────────────────────
+  findFavorites(): Promise<MealFavorite[]> {
+    return this.favRepo.find({ order: { createdAt: 'DESC' } });
+  }
+
+  createFavorite(data: Partial<MealFavorite>): Promise<MealFavorite> {
+    return this.favRepo.save(this.favRepo.create(data));
+  }
+
+  async removeFavorite(id: string): Promise<void> {
+    const f = await this.favRepo.findOneBy({ id });
+    if (!f) throw new NotFoundException('Favori introuvable');
+    await this.favRepo.remove(f);
+  }
+
+  // Applique un favori à une date : recrée toutes ses entrées comme repas
+  async applyFavorite(id: string, date: string): Promise<Meal[]> {
+    const fav = await this.favRepo.findOneBy({ id });
+    if (!fav) throw new NotFoundException('Favori introuvable');
+    const meals = (fav.entries ?? []).map((e) =>
+      this.repo.create({
+        name: e.name,
+        date,
+        mealType: e.mealType,
+        calories: e.calories ?? 0,
+        proteins: e.proteins ?? 0,
+        carbs: e.carbs ?? 0,
+        fats: e.fats ?? 0,
+      }),
+    );
+    return meals.length ? this.repo.save(meals) : [];
+  }
+
+  // Duplique tous les repas d'un jour vers un autre
+  async duplicateDay(from: string, to: string): Promise<Meal[]> {
+    const source = await this.findByDate(from);
+    const copies = source.map((m) =>
+      this.repo.create({
+        name: m.name, date: to, mealType: m.mealType,
+        calories: m.calories, proteins: m.proteins, carbs: m.carbs, fats: m.fats,
+        items: m.items ?? undefined,
+      }),
+    );
+    return copies.length ? this.repo.save(copies) : [];
+  }
+
+  // Aliments récents distincts (par nom), occurrence la plus récente
+  async getRecent(limit = 12) {
+    const meals = await this.repo.find({ order: { createdAt: 'DESC' }, take: 200 });
+    const seen = new Set<string>();
+    const out: { name: string; calories: number; proteins: number; carbs: number; fats: number }[] = [];
+    for (const m of meals) {
+      const key = m.name.trim().toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ name: m.name, calories: m.calories, proteins: m.proteins, carbs: m.carbs, fats: m.fats });
+      if (out.length >= limit) break;
+    }
+    return out;
+  }
 
   findByDate(date: string): Promise<Meal[]> {
     return this.repo.find({ where: { date }, order: { mealType: 'ASC', createdAt: 'ASC' } });
@@ -46,10 +110,15 @@ export class NutritionService {
       'Accept': 'application/json',
     };
 
-    const parseProducts = (products: any[]) =>
-      products
+    // Tokens de la requête (sans accents) pour vérifier la pertinence des résultats
+    const qTokens = query.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter((w) => w.length > 1);
+
+    const norm = (s: string) => (s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+    const parseProducts = (products: any[]) => {
+      const mapped = products
         .filter((p: any) => p.product_name && (p.nutriments?.['energy-kcal_100g'] ?? 0) > 0)
-        .slice(0, 6)
         .map((p: any) => ({
           name: p.product_name + (p.brands ? ` (${p.brands.split(',')[0].trim()})` : ''),
           calories: Math.round(p.nutriments?.['energy-kcal_100g'] ?? 0),
@@ -57,42 +126,36 @@ export class NutritionService {
           carbs:    Math.round((p.nutriments?.carbohydrates_100g ?? 0) * 10) / 10,
           fats:     Math.round((p.nutriments?.fat_100g ?? 0) * 10) / 10,
         }));
+      // Garde-fou de pertinence : on privilégie les produits dont le nom contient un mot de la requête
+      const relevant = qTokens.length
+        ? mapped.filter((m) => qTokens.some((t) => norm(m.name).includes(t)))
+        : mapped;
+      return (relevant.length ? relevant : mapped).slice(0, 6);
+    };
 
-    // Essai 1 : API v2
-    try {
-      const url = `https://world.openfoodfacts.org/api/v2/search?search_terms=${encodeURIComponent(query)}&page_size=10&fields=product_name,nutriments,brands`;
-      const res = await fetch(url, { headers, signal: AbortSignal.timeout(6000) });
-      if (res.ok) {
+    // Endpoint plein-texte cgi/search.pl (le v2 /search n'interprète PAS search_terms).
+    // On privilégie le sous-domaine fr pour des requêtes françaises plus pertinentes.
+    const enc = encodeURIComponent(query);
+    const endpoints = [
+      `https://fr.openfoodfacts.org/cgi/search.pl?search_terms=${enc}&search_simple=1&action=process&json=1&page_size=24&sort_by=unique_scans_n`,
+      `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${enc}&search_simple=1&action=process&json=1&page_size=24&sort_by=unique_scans_n`,
+    ];
+
+    let lastErr: any = null;
+    for (const url of endpoints) {
+      try {
+        const res = await fetch(url, { headers, signal: AbortSignal.timeout(8000) });
+        if (!res.ok) { lastErr = new Error(`HTTP ${res.status}`); continue; }
         const text = await res.text();
-        if (text.trim().startsWith('{')) {
-          const data = JSON.parse(text) as any;
-          const results = parseProducts(data.products ?? []);
-          if (results.length > 0) return results;
-        }
-      }
-    } catch (_) { /* fallback */ }
+        if (!text.trim().startsWith('{')) { lastErr = new Error('Réponse invalide'); continue; }
+        const data = JSON.parse(text) as any;
+        const results = parseProducts(data.products ?? []);
+        if (results.length > 0) return results;
+        lastErr = new Error('Aucun résultat');
+      } catch (e) { lastErr = e; }
+    }
 
-    // Essai 2 : ancien endpoint CGI
-    try {
-      const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=10`;
-      const res = await fetch(url, { headers, signal: AbortSignal.timeout(6000) });
-      if (res.ok) {
-        const text = await res.text();
-        if (text.trim().startsWith('{')) {
-          const data = JSON.parse(text) as any;
-          return parseProducts(data.products ?? []);
-        }
-      }
-    } catch (_) { /* fallback */ }
-
-    // Essai 3 : subdomain fr
-    const url = `https://fr.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=10`;
-    const res = await fetch(url, { headers, signal: AbortSignal.timeout(8000) });
-    if (!res.ok) throw new Error(`Open Food Facts indisponible (${res.status}) — réessaie dans quelques secondes`);
-    const text = await res.text();
-    if (!text.trim().startsWith('{')) throw new Error('Réponse invalide d\'Open Food Facts');
-    const data = JSON.parse(text) as any;
-    return parseProducts(data.products ?? []);
+    throw new Error(`Open Food Facts indisponible (${lastErr?.message ?? 'erreur'}) — réessaie dans quelques secondes`);
   }
 
   // ─── Analyse photo via Claude Vision ─────────────────────────────────────────

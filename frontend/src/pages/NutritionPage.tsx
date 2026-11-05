@@ -81,6 +81,7 @@ export default function NutritionPage() {
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['meals', activeDate] });
     qc.invalidateQueries({ queryKey: ['totals', activeDate] });
+    qc.invalidateQueries({ queryKey: ['nutrition-recent'] });
   };
 
   const { data: meals = [] } = useQuery({
@@ -91,6 +92,16 @@ export default function NutritionPage() {
   const { data: totals = { calories: 0, proteins: 0, carbs: 0, fats: 0 } } = useQuery({
     queryKey: ['totals', activeDate],
     queryFn: () => api.get(`/nutrition/totals?date=${activeDate}`).then(r => r.data),
+  });
+
+  const { data: favorites = [] } = useQuery({
+    queryKey: ['nutrition-favorites'],
+    queryFn: () => api.get('/nutrition/favorites').then(r => r.data),
+  });
+
+  const { data: recents = [] } = useQuery({
+    queryKey: ['nutrition-recent'],
+    queryFn: () => api.get('/nutrition/recent').then(r => r.data),
   });
 
   const addMeal = useMutation({
@@ -132,6 +143,54 @@ export default function NutritionPage() {
     mutationFn: (id: string) => api.delete(`/nutrition/meals/${id}`),
     onSuccess: invalidate,
   });
+
+  // ── Ajout rapide : favoris, duplication, récents ──
+  const invalidateFav = () => qc.invalidateQueries({ queryKey: ['nutrition-favorites'] });
+
+  const applyFav = useMutation({
+    mutationFn: (id: string) => api.post(`/nutrition/favorites/${id}/apply?date=${activeDate}`),
+    onSuccess: invalidate,
+  });
+  const saveFav = useMutation({
+    mutationFn: (body: any) => api.post('/nutrition/favorites', body),
+    onSuccess: invalidateFav,
+    onError: () => alert('Échec de l\'enregistrement du favori.'),
+  });
+  const delFav = useMutation({
+    mutationFn: (id: string) => api.delete(`/nutrition/favorites/${id}`),
+    onSuccess: invalidateFav,
+  });
+  const dupDay = useMutation({
+    mutationFn: (body: { from: string; to: string }) => api.post('/nutrition/duplicate', body),
+    onSuccess: (res: any) => { invalidate(); if (!res?.data?.length) alert('Aucun repas la veille à copier.'); },
+  });
+
+  const favKcal = (f: any) => Math.round((f.entries ?? []).reduce((s: number, e: any) => s + (e.calories ?? 0), 0));
+
+  const repeatYesterday = () => dupDay.mutate({ from: offsetDate(activeDate, -1), to: activeDate });
+
+  const saveDayFavorite = () => {
+    if (!meals.length) return;
+    const name = prompt('Nom du favori (combo de la journée) :', 'Mon combo');
+    if (!name?.trim()) return;
+    saveFav.mutate({
+      name: name.trim(),
+      entries: meals.map((m: any) => ({
+        name: m.name, mealType: m.mealType, calories: m.calories, proteins: m.proteins, carbs: m.carbs, fats: m.fats,
+      })),
+    });
+  };
+
+  const saveMealFavorite = (m: any) => {
+    const name = prompt('Nom du favori :', m.name);
+    if (!name?.trim()) return;
+    saveFav.mutate({
+      name: name.trim(),
+      entries: [{ name: m.name, mealType: m.mealType, calories: m.calories, proteins: m.proteins, carbs: m.carbs, fats: m.fats }],
+    });
+  };
+
+  const addRecent = (r: any) => addMeal.mutate({ name: r.name, calories: r.calories, proteins: r.proteins, carbs: r.carbs, fats: r.fats });
 
   const handleSearch = async () => {
     if (!search.trim()) return;
@@ -259,6 +318,57 @@ export default function NutritionPage() {
           <div className="stat-val">{Math.round(totals.carbs)} g</div>
           <div className="stat-lbl">Glucides</div>
         </div>
+      </div>
+
+      {/* ── Ajout rapide : favoris, récents, répéter ── */}
+      <div className="quick-add">
+        <div className="quick-head">
+          <span className="section-head" style={{ margin: 0 }}>Ajout rapide</span>
+          <div className="quick-actions">
+            <button className="quick-btn" onClick={repeatYesterday} disabled={dupDay.isPending} title="Copier les repas de la veille">
+              <i className="ti ti-rotate-clockwise" /> Répéter hier
+            </button>
+            {meals.length > 0 && (
+              <button className="quick-btn" onClick={saveDayFavorite} disabled={saveFav.isPending} title="Enregistrer tous les repas du jour comme favori">
+                <i className="ti ti-star" /> Enregistrer la journée
+              </button>
+            )}
+          </div>
+        </div>
+
+        {favorites.length > 0 && (
+          <div className="chip-row">
+            {favorites.map((f: any) => (
+              <div className="fav-chip" key={f.id}>
+                <button className="fav-apply" onClick={() => applyFav.mutate(f.id)} title="Ajouter à ce jour">
+                  <i className="ti ti-star-filled" />
+                  <span className="fav-name">{f.name}</span>
+                  <span className="fav-kcal">{favKcal(f)} kcal{f.entries?.length > 1 ? ` · ${f.entries.length} items` : ''}</span>
+                </button>
+                <button className="fav-del" onClick={() => { if (confirm(`Supprimer le favori « ${f.name} » ?`)) delFav.mutate(f.id); }} title="Supprimer">
+                  <i className="ti ti-x" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {recents.length > 0 && (
+          <>
+            <div className="quick-sub">Récents — clic pour ré-ajouter ({MEAL_TYPES.find(t => t.value === mealType)?.label})</div>
+            <div className="chip-row">
+              {recents.map((r: any, i: number) => (
+                <button className="recent-chip" key={i} onClick={() => addRecent(r)} title={`${Math.round(r.calories)} kcal · P${Math.round(r.proteins)} G${Math.round(r.carbs)} L${Math.round(r.fats)}`}>
+                  <i className="ti ti-plus" /> {r.name} <span className="recent-kcal">{Math.round(r.calories)}</span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
+        {favorites.length === 0 && recents.length === 0 && (
+          <p className="quick-empty">Logge un repas, puis enregistre-le en favori (★) pour le réutiliser en 1 clic.</p>
+        )}
       </div>
 
       {/* ── Sélecteur moment de la journée ── */}
@@ -585,8 +695,12 @@ export default function NutritionPage() {
                         P: {Math.round(m.proteins)}g · G: {Math.round(m.carbs)}g · L: {Math.round(m.fats)}g
                       </div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <span className="meal-kcal">{Math.round(m.calories)} kcal</span>
+                      <button onClick={() => saveMealFavorite(m)} title="Enregistrer comme favori"
+                        style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 14 }}>
+                        <i className="ti ti-star" />
+                      </button>
                       <button onClick={() => removeMeal.mutate(m.id)}
                         style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 15 }}>
                         <i className="ti ti-x" />

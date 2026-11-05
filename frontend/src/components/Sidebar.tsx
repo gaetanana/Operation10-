@@ -1,9 +1,11 @@
 import { NavLink } from 'react-router-dom';
 
 const links = [
-  { to: '/todo',      icon: 'ti-checks',    label: 'Todo' },
+  { to: '/',          icon: 'ti-layout-dashboard', label: 'Accueil' },
+  { to: '/seance',    icon: 'ti-flame',     label: 'Séance du jour' },
   { to: '/sport',     icon: 'ti-barbell',   label: 'Sport' },
   { to: '/nutrition', icon: 'ti-salad',     label: 'Nutrition' },
+  { to: '/revision',  icon: 'ti-cards',     label: 'Révisions' },
   { to: '/stats',     icon: 'ti-chart-line', label: 'Stats' },
 ];
 
@@ -29,6 +31,7 @@ export default function Sidebar() {
           <NavLink
             key={to}
             to={to}
+            end={to === '/'}
             className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
           >
             <i className={`ti ${icon}`} />

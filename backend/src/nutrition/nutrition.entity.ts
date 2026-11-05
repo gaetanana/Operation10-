@@ -49,3 +49,27 @@ export class Meal {
   @CreateDateColumn()
   createdAt: Date;
 }
+
+// Repas favori / combo : un ou plusieurs « entrées » réutilisables en 1 clic
+@Entity('meal_favorites')
+export class MealFavorite {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column()
+  name: string;
+
+  // chaque entrée = un repas qui sera recréé tel quel
+  @Column({ type: 'jsonb', default: '[]' })
+  entries: {
+    name: string;
+    mealType: MealType;
+    calories: number;
+    proteins: number;
+    carbs: number;
+    fats: number;
+  }[];
+
+  @CreateDateColumn()
+  createdAt: Date;
+}

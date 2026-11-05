@@ -29,3 +29,19 @@ export declare class AnalyzeImageDto {
     base64: string;
     mediaType?: string;
 }
+export declare class FavoriteEntryDto {
+    name: string;
+    mealType?: MealType;
+    calories?: number;
+    proteins?: number;
+    carbs?: number;
+    fats?: number;
+}
+export declare class CreateFavoriteDto {
+    name: string;
+    entries: FavoriteEntryDto[];
+}
+export declare class DuplicateDayDto {
+    from: string;
+    to: string;
+}

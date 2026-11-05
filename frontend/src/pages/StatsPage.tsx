@@ -107,12 +107,12 @@ export default function StatsPage() {
     queryFn: () => api.get('/sport/strength-progress').then(r => r.data),
   });
 
-  // Objectif contrat = nb templates planifiés (hors quotidien)
+  // Objectif contrat = somme des objectifs hebdo (×N par semaine)
   const { data: templates = [] } = useQuery({
     queryKey: ['templates'],
     queryFn: () => api.get('/sport/templates').then(r => r.data),
   });
-  const contractTarget = (templates as any[]).filter((t: any) => t.dayOfWeek >= 0).length;
+  const contractTarget = (templates as any[]).reduce((n: number, t: any) => n + (t.weeklyTarget ?? 1), 0);
   const weekProgress = contractTarget > 0 ? Math.round(((stats?.thisWeek ?? 0) / contractTarget) * 100) : 0;
 
   return (

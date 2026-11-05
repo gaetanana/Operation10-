@@ -9,7 +9,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.Meal = exports.MealType = void 0;
+exports.MealFavorite = exports.Meal = exports.MealType = void 0;
 const typeorm_1 = require("typeorm");
 var MealType;
 (function (MealType) {
@@ -68,4 +68,26 @@ __decorate([
 exports.Meal = Meal = __decorate([
     (0, typeorm_1.Entity)('meals')
 ], Meal);
+let MealFavorite = class MealFavorite {
+};
+exports.MealFavorite = MealFavorite;
+__decorate([
+    (0, typeorm_1.PrimaryGeneratedColumn)('uuid'),
+    __metadata("design:type", String)
+], MealFavorite.prototype, "id", void 0);
+__decorate([
+    (0, typeorm_1.Column)(),
+    __metadata("design:type", String)
+], MealFavorite.prototype, "name", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'jsonb', default: '[]' }),
+    __metadata("design:type", Array)
+], MealFavorite.prototype, "entries", void 0);
+__decorate([
+    (0, typeorm_1.CreateDateColumn)(),
+    __metadata("design:type", Date)
+], MealFavorite.prototype, "createdAt", void 0);
+exports.MealFavorite = MealFavorite = __decorate([
+    (0, typeorm_1.Entity)('meal_favorites')
+], MealFavorite);
 //# sourceMappingURL=nutrition.entity.js.map

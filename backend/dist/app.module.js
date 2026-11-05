@@ -13,6 +13,7 @@ const typeorm_1 = require("@nestjs/typeorm");
 const todo_module_1 = require("./todo/todo.module");
 const sport_module_1 = require("./sport/sport.module");
 const nutrition_module_1 = require("./nutrition/nutrition.module");
+const revision_module_1 = require("./revision/revision.module");
 const seed_service_1 = require("./seed.service");
 const todo_entity_1 = require("./todo/todo.entity");
 const sport_entity_1 = require("./sport/sport.entity");
@@ -36,6 +37,7 @@ exports.AppModule = AppModule = __decorate([
             todo_module_1.TodoModule,
             sport_module_1.SportModule,
             nutrition_module_1.NutritionModule,
+            revision_module_1.RevisionModule,
         ],
         providers: [seed_service_1.SeedService],
     })

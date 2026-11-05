@@ -36,6 +36,16 @@ let NutritionController = class NutritionController {
     analyzeImage(body) {
         return this.service.analyzeImage(body.base64, body.mediaType || 'image/jpeg');
     }
+    findFavorites() { return this.service.findFavorites(); }
+    createFavorite(body) { return this.service.createFavorite(body); }
+    removeFavorite(id) { return this.service.removeFavorite(id); }
+    applyFavorite(id, date) {
+        return this.service.applyFavorite(id, date);
+    }
+    duplicateDay(body) {
+        return this.service.duplicateDay(body.from, body.to);
+    }
+    getRecent() { return this.service.getRecent(); }
 };
 exports.NutritionController = NutritionController;
 __decorate([
@@ -92,6 +102,51 @@ __decorate([
     __metadata("design:paramtypes", [nutrition_dto_1.AnalyzeImageDto]),
     __metadata("design:returntype", void 0)
 ], NutritionController.prototype, "analyzeImage", null);
+__decorate([
+    (0, common_1.Get)('favorites'),
+    (0, swagger_1.ApiOperation)({ summary: 'Liste des repas favoris / combos' }),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], NutritionController.prototype, "findFavorites", null);
+__decorate([
+    (0, common_1.Post)('favorites'),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [nutrition_dto_1.CreateFavoriteDto]),
+    __metadata("design:returntype", void 0)
+], NutritionController.prototype, "createFavorite", null);
+__decorate([
+    (0, common_1.Delete)('favorites/:id'),
+    __param(0, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], NutritionController.prototype, "removeFavorite", null);
+__decorate([
+    (0, common_1.Post)('favorites/:id/apply'),
+    (0, swagger_1.ApiOperation)({ summary: 'Applique un favori à une date (param: date)' }),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.Query)('date')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:returntype", void 0)
+], NutritionController.prototype, "applyFavorite", null);
+__decorate([
+    (0, common_1.Post)('duplicate'),
+    (0, swagger_1.ApiOperation)({ summary: 'Duplique les repas d\'un jour vers un autre' }),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [nutrition_dto_1.DuplicateDayDto]),
+    __metadata("design:returntype", void 0)
+], NutritionController.prototype, "duplicateDay", null);
+__decorate([
+    (0, common_1.Get)('recent'),
+    (0, swagger_1.ApiOperation)({ summary: 'Aliments récents distincts (réutilisation rapide)' }),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], NutritionController.prototype, "getRecent", null);
 exports.NutritionController = NutritionController = __decorate([
     (0, swagger_1.ApiTags)('Nutrition'),
     (0, common_1.Controller)('nutrition'),

@@ -39,9 +39,13 @@ __decorate([
     __metadata("design:type", String)
 ], SessionTemplate.prototype, "type", void 0);
 __decorate([
-    (0, typeorm_1.Column)(),
+    (0, typeorm_1.Column)({ default: 0 }),
     __metadata("design:type", Number)
 ], SessionTemplate.prototype, "dayOfWeek", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'int', default: 1 }),
+    __metadata("design:type", Number)
+], SessionTemplate.prototype, "weeklyTarget", void 0);
 __decorate([
     (0, typeorm_1.Column)({ nullable: true }),
     __metadata("design:type", Number)

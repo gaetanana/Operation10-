@@ -25,9 +25,17 @@ __decorate([
     __metadata("design:type", String)
 ], CreateTemplateDto.prototype, "type", void 0);
 __decorate([
+    (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsNumber)(),
     __metadata("design:type", Number)
 ], CreateTemplateDto.prototype, "dayOfWeek", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.Min)(1),
+    (0, class_validator_1.Max)(14),
+    __metadata("design:type", Number)
+], CreateTemplateDto.prototype, "weeklyTarget", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsNumber)(),
@@ -58,6 +66,13 @@ __decorate([
     (0, class_validator_1.IsNumber)(),
     __metadata("design:type", Number)
 ], UpdateTemplateDto.prototype, "dayOfWeek", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.Min)(1),
+    (0, class_validator_1.Max)(14),
+    __metadata("design:type", Number)
+], UpdateTemplateDto.prototype, "weeklyTarget", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsNumber)(),

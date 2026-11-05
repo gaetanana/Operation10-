@@ -125,6 +125,7 @@ let SeedService = SeedService_1 = class SeedService {
                 name: 'EMOM pompes',
                 type: sport_entity_1.SessionType.EMOM,
                 dayOfWeek: -1,
+                weeklyTarget: 7,
                 durationMinutes: 10,
                 description: '15 reps / min pendant 10 min — quotidien',
             },
@@ -172,6 +173,7 @@ let SeedService = SeedService_1 = class SeedService {
             await this.templateRepo.save({ ...jambes, dayOfWeek: 2 });
             this.logger.log('🔄 Jambes déplacé au mercredi');
         }
+        await this.templateRepo.update({ type: sport_entity_1.SessionType.EMOM, weeklyTarget: 1 }, { weeklyTarget: 7 });
     }
 };
 exports.SeedService = SeedService;

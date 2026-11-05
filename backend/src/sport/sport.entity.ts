@@ -27,8 +27,11 @@ export class SessionTemplate {
   @Column({ type: 'enum', enum: SessionType })
   type: SessionType;
 
-  @Column()
-  dayOfWeek: number; // 0 = lundi, 6 = dimanche
+  @Column({ default: 0 })
+  dayOfWeek: number; // déprécié — conservé pour compat (le suivi est désormais par objectif hebdo)
+
+  @Column({ type: 'int', default: 1 })
+  weeklyTarget: number; // nombre de séances de ce type visées par semaine
 
   @Column({ nullable: true })
   durationMinutes: number;
