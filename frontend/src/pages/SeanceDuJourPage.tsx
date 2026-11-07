@@ -1,13 +1,17 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import api from '../services/api';
 import { TYPE_CONFIG, ExForm, ExerciseRow } from './SportPage';
-
-const today = new Date().toISOString().split('T')[0];
+import { getLocalDateString } from '../utils/date';
 
 type DraftEx = any & { _id: string };
 
 export default function SeanceDuJourPage() {
+  const today = getLocalDateString();
+  const [searchParams] = useSearchParams();
+  const requestedTemplate = searchParams.get('template');
+  const initializedTemplate = useRef<string | null>(null);
   const qc = useQueryClient();
   const idRef = useRef(0);
   const newId = () => `d${idRef.current++}`;
@@ -47,6 +51,13 @@ export default function SeanceDuJourPage() {
       setType(value.slice(2));
     }
   };
+
+  useEffect(() => {
+    if (!requestedTemplate || initializedTemplate.current === requestedTemplate) return;
+    if (!(templates as any[]).some(t => t.id === requestedTemplate)) return;
+    initializedTemplate.current = requestedTemplate;
+    pick(`c:${requestedTemplate}`);
+  }, [requestedTemplate, templates]);
 
   const addEx = (data: any) => { setExercises(xs => [...xs, { ...data, _id: newId() }]); setShowAdd(false); };
   const updateEx = (id: string, data: any) => setExercises(xs => xs.map(x => x._id === id ? { ...x, ...data, _id: id } : x));
@@ -95,8 +106,9 @@ export default function SeanceDuJourPage() {
 
       {/* Choix de la séance */}
       <div className="card sdj-card">
-        <label className="sdj-label">Quelle séance aujourd'hui ?</label>
+        <label htmlFor="session-choice" className="sdj-label">Quelle séance aujourd'hui ?</label>
         <select
+          id="session-choice"
           className="food-input sdj-select"
           value={templateId ? `c:${templateId}` : `t:${type}`}
           onChange={e => pick(e.target.value)}
@@ -115,7 +127,7 @@ export default function SeanceDuJourPage() {
 
         <div className="sdj-meta">
           <div className={`sess-icon ${cfg.color}`}><i className={`ti ${cfg.icon}`} /></div>
-          <input className="food-input" placeholder="Nom de la séance" value={name} onChange={e => setName(e.target.value)} style={{ flex: 1 }} />
+          <input aria-label="Nom de la séance" className="food-input" placeholder="Nom de la séance" value={name} onChange={e => setName(e.target.value)} style={{ flex: 1 }} />
           <input className="food-input" type="number" value={durationMinutes} onChange={e => setDurationMinutes(Number(e.target.value))} style={{ width: 80 }} title="Durée (min)" />
         </div>
       </div>

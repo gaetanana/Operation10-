@@ -2,6 +2,8 @@
 
 Application personnelle de suivi des tâches, du sport et de la nutrition.
 
+L'accueil « Aujourd'hui » donne accès à la préparation de séance, au carnet sportif et aux repas. La navigation mobile regroupe Aujourd'hui, Sport et Nutrition ; le menu Plus conserve les tâches, la progression et la déconnexion. Révisions n'est plus exposé dans l'interface : ses routes frontend redirigent vers l'accueil, mais le backend et les données existantes sont conservés.
+
 ## Développement local
 
 1. Copier `.env.example` vers `.env`.

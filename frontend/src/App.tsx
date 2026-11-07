@@ -9,7 +9,6 @@ import LoginPage from './pages/LoginPage';
 import TodoPage from './pages/TodoPage';
 import SportPage from './pages/SportPage';
 import NutritionPage from './pages/NutritionPage';
-import RevisionPage from './pages/RevisionPage';
 import StatsPage from './pages/StatsPage';
 import api from './services/api';
 
@@ -58,15 +57,17 @@ export default function App() {
 
   return (
     <div className="app-layout">
+      <a className="skip-link" href="#main-content">Aller au contenu</a>
       <Sidebar onLogout={() => logout.mutate()} loggingOut={logout.isPending} />
-      <main className="app-main">
+      <main className="app-main" id="main-content" tabIndex={-1}>
+        {logout.isError && <div role="alert" className="feedback-error">La déconnexion a échoué. Réessaie depuis le menu.</div>}
         <Routes>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/todo" element={<TodoPage />} />
           <Route path="/seance" element={<SeanceDuJourPage />} />
           <Route path="/sport" element={<SportPage />} />
           <Route path="/nutrition" element={<NutritionPage />} />
-          <Route path="/revision" element={<RevisionPage />} />
+          <Route path="/revision/*" element={<Navigate to="/" replace />} />
           <Route path="/stats" element={<StatsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
