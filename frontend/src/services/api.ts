@@ -1,13 +1,13 @@
 import axios from 'axios';
 
-// L'URL du backend suit l'hôte par lequel on ouvre l'app :
-// - sur le PC (localhost) → http://localhost:3000
-// - sur le téléphone (http://192.168.x.x:5173) → http://192.168.x.x:3000
-// VITE_API_URL n'est utilisé que s'il pointe ailleurs que localhost.
+// En production, l'API est servie sur la même origine que l'interface.
+// En développement, le port 3000 suit l'hôte pour conserver l'accès LAN.
 const env = import.meta.env.VITE_API_URL as string | undefined;
-const base = env && !env.includes('localhost')
-  ? env
-  : `${window.location.protocol}//${window.location.hostname}:3000`;
+const base = import.meta.env.PROD
+  ? ''
+  : env && !env.includes('localhost')
+    ? env
+    : `${window.location.protocol}//${window.location.hostname}:3000`;
 
 const api = axios.create({
   baseURL: `${base}/api`,
