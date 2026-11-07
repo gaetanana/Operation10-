@@ -4,6 +4,17 @@ Application personnelle de suivi des tâches, du sport et de la nutrition.
 
 L'accueil « Aujourd'hui » donne accès à la préparation de séance, au carnet sportif et aux repas. La navigation mobile regroupe Aujourd'hui, Sport et Nutrition ; le menu Plus conserve les tâches, la progression et la déconnexion. Révisions n'est plus exposé dans l'interface : ses routes frontend redirigent vers l'accueil, mais le backend et les données existantes sont conservés.
 
+## Programme et séries réalisées
+
+Sport propose un aperçu du programme de quatre jours avant import explicite. L'import ajoute des contrats et leurs exercices en une transaction, ne remplace rien et refuse les noms déjà présents. Les charges sont des références : aucune séance passée n'est créée. Les répétitions ou unités de charge non précisées restent signalées dans les notes.
+
+La préparation de séance permet de saisir les répétitions et la charge de chaque série réellement effectuée. Une seule requête enregistre la séance et ses exercices de manière atomique. Sans séries réalisées, un exercice de musculation n'est pas enregistré ; les efforts cardio renseignés restent compatibles. Les anciennes séances conservent leur format. Les nouvelles séries sont affichées dans le carnet et éditables ; la charge maximale réalisée alimente les statistiques existantes. Le rappel de dernière performance utilise l'identifiant de l'exercice du contrat, pas son nom.
+
+Les saisies sont conservées à l'écran en cas d'erreur, mais ne sont pas encore persistées après fermeture ou rechargement de la page.
+Le programme de référence est fourni par une route API authentifiée, et non inclus dans les fichiers JavaScript publics.
+
+Les tests `npm run test:sport` valident les séries imbriquées. Pour inclure les tests PostgreSQL, fournir `SPORT_TEST_DATABASE_URL` vers une base locale dédiée et vide nommée `operation10_sport_test`. Ces tests appliquent les migrations et vérifient les annulations transactionnelles ; ils ne doivent pas cibler les données de l'application.
+
 ## Développement local
 
 1. Copier `.env.example` vers `.env`.

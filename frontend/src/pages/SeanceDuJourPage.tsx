@@ -4,8 +4,23 @@ import { useSearchParams } from 'react-router-dom';
 import api from '../services/api';
 import { TYPE_CONFIG, ExForm, ExerciseRow } from './SportPage';
 import { getLocalDateString } from '../utils/date';
+import SetTracker, { SetEntry, validSets } from '../components/SetTracker';
+import { AxiosError } from 'axios';
 
-type DraftEx = any & { _id: string };
+interface DraftEx {
+  _id: string;
+  name: string;
+  sets?: number | null;
+  reps?: number | null;
+  weight?: number | null;
+  restSeconds?: number | null;
+  durationSeconds?: number | null;
+  distanceKm?: number | null;
+  avgSpeedKmh?: number | null;
+  notes?: string | null;
+  templateExerciseId?: string;
+  performedSets: SetEntry[];
+}
 
 export default function SeanceDuJourPage() {
   const today = getLocalDateString();
@@ -28,6 +43,12 @@ export default function SeanceDuJourPage() {
     queryKey: ['templates'],
     queryFn: () => api.get('/sport/templates').then(r => r.data),
   });
+  const history = useQuery({
+    queryKey: ['sessions'],
+    queryFn: () => api.get<{ date: string; exercises: {
+      templateExerciseId: string | null; performedSets: SetEntry[] | null;
+    }[] }[]>('/sport/sessions').then(r => r.data),
+  });
 
   const cfg = TYPE_CONFIG[type] ?? TYPE_CONFIG.other;
 
@@ -42,6 +63,8 @@ export default function SeanceDuJourPage() {
       setDurationMinutes(tpl.durationMinutes ?? 60);
       setExercises((tpl.templateExercises ?? []).map((e: any) => ({
         _id: newId(),
+        templateExerciseId: e.id,
+        performedSets: [],
         name: e.name, sets: e.sets ?? null, reps: e.reps ?? null, weight: e.weight ?? null,
         restSeconds: e.restSeconds ?? null, durationSeconds: e.durationSeconds ?? null,
         distanceKm: e.distanceKm ?? null, avgSpeedKmh: e.avgSpeedKmh ?? null, notes: e.notes ?? null,
@@ -59,7 +82,7 @@ export default function SeanceDuJourPage() {
     pick(`c:${requestedTemplate}`);
   }, [requestedTemplate, templates]);
 
-  const addEx = (data: any) => { setExercises(xs => [...xs, { ...data, _id: newId() }]); setShowAdd(false); };
+  const addEx = (data: Omit<DraftEx, '_id' | 'performedSets'>) => { setExercises(xs => [...xs, { ...data, performedSets: [], _id: newId() }]); setShowAdd(false); };
   const updateEx = (id: string, data: any) => setExercises(xs => xs.map(x => x._id === id ? { ...x, ...data, _id: id } : x));
   const deleteEx = (id: string) => setExercises(xs => xs.filter(x => x._id !== id));
 
@@ -70,28 +93,34 @@ export default function SeanceDuJourPage() {
 
   const validate = useMutation({
     mutationFn: async () => {
-      const res = await api.post('/sport/sessions', {
+      return api.post('/sport/sessions', {
         name: name.trim() || cfg.label, type, date: today,
         durationMinutes, notes: notes.trim() || undefined, templateId: templateId || undefined,
+        exercises: exercises.filter(ex => ex.performedSets.length > 0 ||
+          type === 'cardio' && (ex.durationSeconds || ex.distanceKm)).map(ex => ({
+          name: ex.name,
+          templateExerciseId: ex.templateExerciseId,
+          performedSets: ex.performedSets.length ? ex.performedSets : undefined,
+          restSeconds: ex.restSeconds ?? undefined,
+          durationSeconds: type === 'cardio' ? ex.durationSeconds ?? undefined : undefined,
+          distanceKm: type === 'cardio' ? ex.distanceKm ?? undefined : undefined,
+          avgSpeedKmh: type === 'cardio' ? ex.avgSpeedKmh ?? undefined : undefined,
+          notes: ex.notes ?? undefined,
+        })),
       });
-      const sid = res.data.id;
-      for (const ex of exercises) {
-        await api.post(`/sport/sessions/${sid}/exercises`, {
-          name: ex.name, sets: ex.sets ?? null, reps: ex.reps ?? null, weight: ex.weight ?? null,
-          restSeconds: ex.restSeconds ?? null, durationSeconds: ex.durationSeconds ?? null,
-          distanceKm: ex.distanceKm ?? null, avgSpeedKmh: ex.avgSpeedKmh ?? null, notes: ex.notes ?? null,
-        });
-      }
-      return res.data;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['sessions'] });
       qc.invalidateQueries({ queryKey: ['sport-stats'] });
+      qc.invalidateQueries({ queryKey: ['strength-progress'] });
       reset();
-      alert('Séance enregistrée ✅');
     },
-    onError: (e: any) => alert(e?.response?.data?.message ?? 'Échec de l\'enregistrement.'),
   });
+  const hasPerformance = exercises.some(ex => ex.performedSets.length > 0 ||
+    type === 'cardio' && (ex.durationSeconds || ex.distanceKm));
+  const isValid = hasPerformance && exercises.every(ex => validSets(ex.performedSets)) &&
+    Number.isFinite(durationMinutes) && durationMinutes >= 1;
+  const saveError = validate.error instanceof AxiosError ? validate.error.response?.data?.message : undefined;
 
   const dateLabel = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
 
@@ -134,14 +163,28 @@ export default function SeanceDuJourPage() {
 
       {/* Exercices (adaptables) */}
       <p className="section-head">Exercices {exercises.length > 0 && `· ${exercises.length}`}</p>
+      <p className="set-hint">Les charges affichées sont des repères. Ajoute les séries que tu as vraiment réalisées ; les exercices sans série ne seront pas enregistrés (sauf les efforts cardio renseignés).</p>
       <div className="card">
         {exercises.length === 0 && <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: 0 }}>Choisis un contrat pour importer ses exercices, ou ajoute-les un par un.</p>}
         {exercises.map((ex, i) => (
           <div key={ex._id}>
             <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 2 }}>Exercice {i + 1}</div>
             <ExerciseRow ex={ex} sessionType={type} onUpdate={d => updateEx(ex._id, d)} onDelete={() => deleteEx(ex._id)} />
+            {ex.templateExerciseId && (() => {
+              const last = history.data?.filter(s => s.date <= today)
+                .sort((a, b) => b.date.localeCompare(a.date))
+                .flatMap(s => s.exercises)
+                .find(e => e.templateExerciseId === ex.templateExerciseId && e.performedSets?.length);
+              return last?.performedSets && <p className="last-performance">Dernières séries : {last.performedSets.map(s =>
+                `${s.reps} reps${s.weight == null ? '' : ` à ${s.weight} kg`}`).join(' · ')}</p>;
+            })()}
+            {type !== 'cardio' && <SetTracker name={ex.name} value={ex.performedSets}
+              onChange={performedSets => updateEx(ex._id, { performedSets })} />}
           </div>
         ))}
+        {history.isError && <p role="alert" className="feedback-error">L’historique des séries n’a pas pu être chargé.
+          <button type="button" onClick={() => history.refetch()}>Réessayer</button>
+        </p>}
 
         <div style={{ marginTop: 10 }}>
           {showAdd ? (
@@ -157,7 +200,9 @@ export default function SeanceDuJourPage() {
       {/* Notes + validation */}
       <input className="food-input" placeholder="Notes (optionnel)" value={notes} onChange={e => setNotes(e.target.value)} style={{ marginTop: 14, marginBottom: 14 }} />
 
-      <button className="sdj-validate" onClick={() => validate.mutate()} disabled={validate.isPending}>
+      {validate.isError && <p className="feedback-error" role="alert">{typeof saveError === 'string' ? saveError : 'Enregistrement impossible. Tes saisies sont conservées ; vérifie la connexion et réessaie.'}</p>}
+      {validate.isSuccess && <p role="status" className="save-success">Séance enregistrée avec ses séries. Retrouve-la dans ton carnet Sport.</p>}
+      <button className="sdj-validate" onClick={() => validate.mutate()} disabled={validate.isPending || !isValid}>
         {validate.isPending
           ? <><i className="ti ti-loader-2 spin" /> Enregistrement…</>
           : <><i className="ti ti-circle-check" /> Valider la séance</>}

@@ -1,12 +1,16 @@
 import { Controller, Get, Post, Patch, Delete, Param, Body, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { SportService } from './sport.service';
-import { CreateTemplateDto, UpdateTemplateDto, CreateSessionDto, UpdateSessionDto, ExerciseDto, UpdateExerciseDto } from './sport.dto';
+import { referenceProgram } from './sport.reference';
+import { CreateTemplateDto, UpdateTemplateDto, CreateSessionDto, UpdateSessionDto, ExerciseDto, UpdateExerciseDto, ImportProgramDto } from './sport.dto';
 
 @ApiTags('Sport')
 @Controller('sport')
 export class SportController {
   constructor(private readonly service: SportService) {}
+
+  @Get('reference-program')
+  getReferenceProgram() { return referenceProgram; }
 
   // ─── Contrat hebdo ──────────────────────────────────────────────────────────
   @Get('templates')
@@ -15,6 +19,9 @@ export class SportController {
 
   @Post('templates')
   createTemplate(@Body() body: CreateTemplateDto) { return this.service.createTemplate(body); }
+
+  @Post('templates/import')
+  importProgram(@Body() body: ImportProgramDto) { return this.service.importProgram(body); }
 
   @Patch('templates/:id')
   updateTemplate(@Param('id') id: string, @Body() body: UpdateTemplateDto) {

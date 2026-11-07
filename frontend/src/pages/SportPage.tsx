@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
 import { getLocalDateString } from '../utils/date';
+import ProgramImport from '../components/ProgramImport';
+import SetTracker, { SetEntry, validSets } from '../components/SetTracker';
 
 const today = getLocalDateString();
 
@@ -93,6 +95,10 @@ function calcSpeed(distanceKm: number, durationSeconds: number): number {
 
 function fmtEx(ex: any, sessionType?: string) {
   const parts: string[] = [];
+  if (ex.performedSets?.length) {
+    return ex.performedSets.map((s: SetEntry, i: number) =>
+      `S${i + 1} : ${s.reps} reps${s.weight == null ? '' : ` à ${s.weight} kg`}`).join(' · ');
+  }
   if (isCardioType(sessionType ?? '')) {
     if (ex.distanceKm) parts.push(`${ex.distanceKm} km`);
     if (ex.durationSeconds) parts.push(fmtDuration(ex.durationSeconds));
@@ -120,6 +126,7 @@ export function ExForm({
   sessionType?: string;
 }) {
   const cardio = isCardioType(sessionType);
+  const [performedSets, setPerformedSets] = useState<SetEntry[]>(initial?.performedSets ?? []);
   const emptyMuscu = { name: '', sets: '', reps: '', weight: '', restSeconds: '', notes: '' };
   const emptyCardio = { name: '', distanceKm: '', durationMin: '', durationSec: '', avgSpeedKmh: '', notes: '' };
 
@@ -155,7 +162,8 @@ export function ExForm({
       if (!initial) setFc(emptyCardio);
     } else {
       if (!fm.name.trim()) return;
-      onSave({ name: fm.name, sets: num(fm.sets), reps: num(fm.reps), weight: num(fm.weight), restSeconds: num(fm.restSeconds), notes: fm.notes || null });
+      onSave({ name: fm.name, sets: num(fm.sets), reps: num(fm.reps), weight: num(fm.weight), restSeconds: num(fm.restSeconds), notes: fm.notes || null,
+        ...(initial?.performedSets != null ? { performedSets } : {}) });
       if (!initial) setFm(emptyMuscu);
     }
   };
@@ -210,9 +218,10 @@ export function ExForm({
       )}
 
       <input className="food-input" placeholder="Notes (optionnel)" value={cardio ? fc.notes : fm.notes} onChange={e => cardio ? setFc(p => ({ ...p, notes: e.target.value })) : setFm(p => ({ ...p, notes: e.target.value }))} style={{ ...inp, marginBottom: 8 }} />
+      {!cardio && initial?.performedSets != null && <SetTracker name={fm.name} value={performedSets} onChange={setPerformedSets} />}
 
       <div style={{ display: 'flex', gap: 6 }}>
-        <button className="food-btn" style={{ fontSize: 12, padding: '5px 16px' }} onClick={handleSave} disabled={cardio ? !fc.name.trim() : !fm.name.trim()}>
+        <button className="food-btn" style={{ fontSize: 12, padding: '5px 16px' }} onClick={handleSave} disabled={cardio ? !fc.name.trim() : !fm.name.trim() || !validSets(performedSets)}>
           <i className="ti ti-check" style={{ marginRight: 5 }} />{saveLabel}
         </button>
         {onCancel && (
@@ -762,6 +771,7 @@ export default function SportPage() {
 
   return (
     <div className="page" style={{ maxWidth: '100%' }}>
+      <ProgramImport />
       <div className="page-header">
         <div>
           <h1 className="page-title">Sport</h1>

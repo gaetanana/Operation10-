@@ -1,7 +1,20 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Session, SessionTemplate, Exercise } from './sport.entity';
+import { CreateSessionDto, ImportProgramDto } from './sport.dto';
+
+function withSetSummary(data: Partial<Exercise>): Partial<Exercise> {
+  if (!data.performedSets) return data;
+  const weights = data.performedSets.flatMap(s => s.weight == null ? [] : [s.weight]);
+  return {
+    ...data,
+    sets: data.performedSets.length || null,
+    reps: null,
+    weight: weights.length ? Math.max(...weights) : null,
+  };
+}
 
 @Injectable()
 export class SportService {
@@ -19,6 +32,27 @@ export class SportService {
 
   createTemplate(data: Partial<SessionTemplate>): Promise<SessionTemplate> {
     return this.templateRepo.save(this.templateRepo.create(data));
+  }
+
+  async importProgram(data: ImportProgramDto): Promise<SessionTemplate[]> {
+    return this.templateRepo.manager.transaction(async manager => {
+      // Serialize imports so repeated requests cannot create duplicate programmes.
+      await manager.query("SELECT pg_advisory_xact_lock(hashtext('operation10-program-import'))");
+      const repo = manager.getRepository(SessionTemplate);
+      const existing = await repo.find();
+      const names = data.templates.map(t => t.name.trim().toLocaleLowerCase());
+      if (new Set(names).size !== names.length ||
+          existing.some(t => names.includes(t.name.trim().toLocaleLowerCase()))) {
+        throw new ConflictException('Un contrat porte déjà ce nom. Renomme-le avant de relancer l’import.');
+      }
+      return repo.save(data.templates.map(({ exercises, ...template }) => repo.create({
+        ...template,
+        name: template.name.trim(),
+        templateExercises: exercises.map(({ performedSets, templateExerciseId, ...e }) => ({
+          ...e, id: randomUUID(),
+        })),
+      })));
+    });
   }
 
   async updateTemplate(id: string, data: Partial<SessionTemplate>): Promise<SessionTemplate> {
@@ -55,8 +89,12 @@ export class SportService {
     return s;
   }
 
-  createSession(data: Partial<Session>): Promise<Session> {
-    return this.sessionRepo.save(this.sessionRepo.create(data));
+  createSession(data: CreateSessionDto): Promise<Session> {
+    return this.sessionRepo.save(this.sessionRepo.create({
+      ...data,
+      exercises: data.exercises?.map((e, order) =>
+        this.exerciseRepo.create({ ...withSetSummary(e), order })),
+    }));
   }
 
   async updateSession(id: string, data: Partial<Session>): Promise<Session> {
@@ -78,7 +116,7 @@ export class SportService {
     if (!session) throw new NotFoundException('Séance introuvable');
     const count = await this.exerciseRepo.countBy({ sessionId });
     return this.exerciseRepo.save(
-      this.exerciseRepo.create({ ...data, sessionId, order: count }),
+      this.exerciseRepo.create({ ...withSetSummary(data), sessionId, order: count }),
     );
   }
 
@@ -111,7 +149,7 @@ export class SportService {
   async updateExercise(exerciseId: string, data: Partial<Exercise>): Promise<Exercise> {
     const e = await this.exerciseRepo.findOneBy({ id: exerciseId });
     if (!e) throw new NotFoundException('Exercice introuvable');
-    return this.exerciseRepo.save({ ...e, ...data });
+    return this.exerciseRepo.save({ ...e, ...withSetSummary(data) });
   }
 
   async removeExercise(exerciseId: string): Promise<void> {

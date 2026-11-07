@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsEnum, IsDateString, IsArray, ValidateNested, Min, Max, MinLength } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsEnum, IsDateString, IsArray, ValidateNested, Min, Max, MinLength, IsInt, IsUUID, ArrayMaxSize, ArrayMinSize } from 'class-validator';
 import { Type } from 'class-transformer';
 import { SessionType } from './sport.entity';
 
@@ -64,6 +64,18 @@ export class UpdateTemplateDto {
 
 // ─── Exercise (template JSONB ou séance réelle) ───────────────────────────────
 
+export class PerformedSetDto {
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  reps: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  weight?: number;
+}
+
 export class ExerciseDto {
   @IsString()
   @MinLength(1)
@@ -107,9 +119,37 @@ export class ExerciseDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => PerformedSetDto)
+  performedSets?: PerformedSetDto[];
+
+  @IsOptional()
+  @IsUUID()
+  templateExerciseId?: string;
 }
 
 export class UpdateExerciseDto extends ExerciseDto {}
+
+export class ImportTemplateDto extends CreateTemplateDto {
+  @IsArray()
+  @ArrayMaxSize(30)
+  @ValidateNested({ each: true })
+  @Type(() => ExerciseDto)
+  exercises: ExerciseDto[];
+}
+
+export class ImportProgramDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(14)
+  @ValidateNested({ each: true })
+  @Type(() => ImportTemplateDto)
+  templates: ImportTemplateDto[];
+}
 
 // ─── Session ──────────────────────────────────────────────────────────────────
 
@@ -136,6 +176,13 @@ export class CreateSessionDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => ExerciseDto)
+  exercises?: ExerciseDto[];
 }
 
 export class UpdateSessionDto {

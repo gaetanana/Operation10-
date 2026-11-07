@@ -15,6 +15,11 @@ export enum SessionType {
   OTHER         = 'other',
 }
 
+export interface PerformedSet {
+  reps: number;
+  weight?: number;
+}
+
 // Contrat hebdo (programme type)
 @Entity('session_templates')
 export class SessionTemplate {
@@ -109,6 +114,12 @@ export class Exercise {
 
   @Column({ type: 'float', nullable: true })
   weight: number;
+
+  @Column({ type: 'jsonb', nullable: true })
+  performedSets: PerformedSet[] | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  templateExerciseId: string | null;
 
   @Column({ nullable: true })
   durationSeconds: number; // muscu : durée d'un effort / cardio : durée totale

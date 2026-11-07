@@ -11,6 +11,7 @@ import { SessionTemplate, Exercise } from './sport/sport.entity';
 import { AuthModule } from './auth/auth.module';
 import { InitialSchema1762369200000 } from './migrations/1762369200000-InitialSchema';
 import { SessionTemplateWeeklyTarget1794043200000 } from './migrations/1794043200000-SessionTemplateWeeklyTarget';
+import { PerformedSets1794056400000 } from './migrations/1794056400000-PerformedSets';
 
 @Module({
   imports: [
@@ -22,7 +23,7 @@ import { SessionTemplateWeeklyTarget1794043200000 } from './migrations/179404320
         url: config.get<string>('DATABASE_URL'),
         autoLoadEntities: true,
         synchronize: config.get<string>('NODE_ENV') !== 'production',
-        migrations: [InitialSchema1762369200000, SessionTemplateWeeklyTarget1794043200000],
+        migrations: [InitialSchema1762369200000, SessionTemplateWeeklyTarget1794043200000, PerformedSets1794056400000],
         migrationsRun: config.get<string>('NODE_ENV') === 'production',
       }),
     }),
