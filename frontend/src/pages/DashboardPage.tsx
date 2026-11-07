@@ -1,12 +1,15 @@
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import api from '../services/api';
 import { getLocalDateString } from '../utils/date';
+import { hasWorkoutProgress, readWorkoutDraft } from '../utils/workoutDraft';
 
 interface Session {
   id: string;
   name: string;
   date: string;
+  templateId: string | null;
   durationMinutes: number | null;
 }
 
@@ -17,11 +20,10 @@ interface Template {
   templateExercises: { name: string }[] | null;
 }
 
-interface NutritionTotals {
-  calories: number;
-  proteins: number;
-  carbs: number;
-  fats: number;
+interface Meal {
+  id: string;
+  name: string;
+  mealType: string;
 }
 
 export default function DashboardPage() {
@@ -38,17 +40,23 @@ export default function DashboardPage() {
     queryKey: ['templates'],
     queryFn: () => api.get<Template[]>('/sport/templates').then(r => r.data),
   });
-  const nutrition = useQuery({
-    queryKey: ['nutrition-totals', today],
-    queryFn: () => api.get<NutritionTotals>(`/nutrition/totals?date=${today}`).then(r => r.data),
+  const meals = useQuery({
+    queryKey: ['meals', today],
+    queryFn: () => api.get<Meal[]>(`/nutrition/meals?date=${today}`).then(r => r.data),
   });
+  const workoutDraft = useMemo(() => readWorkoutDraft(), []);
   const weekSessions = sessions.data?.filter(s =>
     s.date >= getLocalDateString(monday) && s.date <= getLocalDateString(sunday),
   );
   const latest = sessions.data?.reduce<Session | undefined>(
     (last, s) => !last || s.date > last.date ? s : last, undefined,
   );
-  const errors = [sessions, templates, nutrition].filter(q => q.isError);
+  const errors = [sessions, templates, meals].filter(q => q.isError);
+  const nextTemplate = templates.data?.find(t =>
+    (weekSessions?.filter(session => session.templateId === t.id).length ?? 0) < t.weeklyTarget,
+  );
+  const draft = workoutDraft.draft && hasWorkoutProgress(workoutDraft.draft) ? workoutDraft.draft : null;
+  const todaysSession = sessions.data?.find(s => s.date === today);
   const dateLabel = new Date().toLocaleDateString('fr-FR', {
     weekday: 'long', day: 'numeric', month: 'long',
   });
@@ -70,15 +78,28 @@ export default function DashboardPage() {
           <button type="button" onClick={() => errors.forEach(q => q.refetch())}>Réessayer</button>
         </div>
       )}
+      {workoutDraft.unavailable && <p className="draft-warning">Le brouillon local est indisponible sur cet appareil.</p>}
 
       <section className="today-hero" aria-labelledby="session-heading">
         <div className="hero-copy">
-          <span className="hero-badge"><i className="ti ti-barbell" aria-hidden="true" /> LE RENDEZ-VOUS AVEC TOI</span>
-          <h2 id="session-heading">Une séance.<br />Un pas de plus.</h2>
-          <p>Retrouve tes exercices, adapte ta séance et garde une trace de ce que tu as fait. Pas besoin d’une semaine parfaite.</p>
+          <span className="hero-badge"><i className="ti ti-barbell" aria-hidden="true" /> TON CARNET SPORTIF</span>
+          <h2 id="session-heading">{draft ? <>Ta séance t’attend.<br />Reprends où tu en étais.</>
+            : nextTemplate ? <>Un repère pour ta semaine.<br />À ton rythme.</>
+              : todaysSession ? <>Séance enregistrée.<br />Bien joué d’avoir noté.</>
+                : <>Une séance.<br />Un pas de plus.</>}</h2>
+          <p>{draft
+            ? `${draft.name || 'Séance libre'} · brouillon sauvegardé sur cet appareil.`
+            : nextTemplate
+              ? `${nextTemplate.name} · ${weekSessions?.filter(session => session.templateId === nextTemplate.id).length ?? 0}/${nextTemplate.weeklyTarget} séance(s) notée(s) cette semaine.`
+              : todaysSession
+                ? `Tu as noté ${todaysSession.name} aujourd’hui. Le programme reste souple ; tu peux en ajouter une autre si tu le souhaites.`
+                : 'Prépare ta séance, adapte les exercices et note uniquement ce que tu as réellement fait.'}</p>
           <div className="hero-actions">
-            <Link className="primary-action" to="/seance">Préparer ma séance <i className="ti ti-arrow-right" aria-hidden="true" /></Link>
-            <Link className="quiet-link" to="/sport">Mon programme</Link>
+            <Link className="primary-action" to={draft ? '/seance' : nextTemplate ? `/seance?template=${encodeURIComponent(nextTemplate.id)}` : '/seance'}>
+              {draft ? 'Reprendre ma séance' : nextTemplate ? 'Préparer ce repère' : todaysSession ? 'Ajouter une séance' : 'Commencer une séance'}
+              <i className="ti ti-arrow-right" aria-hidden="true" />
+            </Link>
+            <Link className="quiet-link" to="/sport">{todaysSession && !draft ? 'Voir mon carnet' : 'Voir mon programme'}</Link>
           </div>
         </div>
         <div className="week-summary">
@@ -92,7 +113,7 @@ export default function DashboardPage() {
             : sessions.isPending ? 'Chargement du carnet…'
               : sessions.isError ? 'Le carnet est momentanément indisponible.'
                 : 'Ton carnet attend sa première séance.'}</p>
-          <Link to="/sport" className="quiet-link">Ouvrir le carnet <i className="ti ti-arrow-right" aria-hidden="true" /></Link>
+          <Link to="/sport" className="quiet-link">Voir les séances <i className="ti ti-arrow-right" aria-hidden="true" /></Link>
         </div>
       </section>
 
@@ -102,20 +123,19 @@ export default function DashboardPage() {
             <div className="section-symbol"><i className="ti ti-salad" aria-hidden="true" /></div>
             <h2 id="nutrition-heading">Dans ton assiette</h2>
           </div>
-          <p className="panel-description">Un suivi simple de ce que tu as renseigné aujourd’hui.</p>
-          {nutrition.isPending ? <p role="status">Chargement des repas…</p>
-            : nutrition.isError ? <p>Le suivi nutrition est momentanément indisponible.</p>
+          <p className="panel-description">Un journal, sans objectif imposé.</p>
+          {meals.isPending ? <p role="status">Chargement des repas…</p>
+            : meals.isError ? <p>Le suivi nutrition est momentanément indisponible.</p>
               : (
                 <>
-                  <div className="nutrition-number">{Math.round(nutrition.data?.calories ?? 0)} <span>kcal enregistrées</span></div>
-                  <dl className="nutrition-summary">
-                    <div><dt>Protéines</dt><dd>{Math.round(nutrition.data?.proteins ?? 0)} g</dd></div>
-                    <div><dt>Glucides</dt><dd>{Math.round(nutrition.data?.carbs ?? 0)} g</dd></div>
-                    <div><dt>Lipides</dt><dd>{Math.round(nutrition.data?.fats ?? 0)} g</dd></div>
-                  </dl>
+                  {meals.data?.length ? <>
+                    <div className="nutrition-number">{meals.data.length} <span>repas noté{meals.data.length === 1 ? '' : 's'} aujourd’hui</span></div>
+                    <ul className="today-meal-list">{meals.data.slice(0, 3).map(meal => <li key={meal.id}>{meal.name}</li>)}</ul>
+                    {meals.data.length > 3 && <p className="meal-more">et {meals.data.length - 3} autre{meals.data.length - 3 > 1 ? 's' : ''}</p>}
+                  </> : <p className="empty-guidance">Aucun repas noté aujourd’hui. Ajoute-en un si tu veux garder une trace.</p>}
                 </>
               )}
-          <Link className="secondary-action" to="/nutrition"><i className="ti ti-plus" aria-hidden="true" /> Ajouter un repas</Link>
+          <Link className="secondary-action" to="/nutrition"><i className="ti ti-plus" aria-hidden="true" /> {meals.data?.length ? 'Noter un repas' : 'Ajouter un repas'}</Link>
         </section>
 
         <section className="today-panel" aria-labelledby="program-heading">

@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback } from 'react';
+import { useRef, useState, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
 
@@ -6,8 +6,6 @@ import api from '../services/api';
 function scale(val: number, grams: number) {
   return Math.round((val * grams / 100) * 10) / 10;
 }
-
-const GOALS = { calories: 2500, proteins: 180, carbs: 250, fats: 80 };
 
 // Toujours en heure locale — évite le décalage UTC
 function getLocalToday(): string {
@@ -77,6 +75,11 @@ export default function NutritionPage() {
   const [shakerScoops, setShakerScoops] = useState(1);
   // 1 scoop 30g = ~120kcal, 25g protéines, 3g glucides, 2g lipides (valeurs typiques whey)
   const SHAKER_PER_SCOOP = { calories: 120, proteins: 25, carbs: 3, fats: 2 };
+  const [favoriteForm, setFavoriteForm] = useState<{ name: string; entries: any[] } | null>(null);
+  const [actionMessage, setActionMessage] = useState('');
+  const [searchError, setSearchError] = useState('');
+  const [photoError, setPhotoError] = useState('');
+  const [bulkSaving, setBulkSaving] = useState(false);
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['meals', activeDate] });
@@ -84,15 +87,17 @@ export default function NutritionPage() {
     qc.invalidateQueries({ queryKey: ['nutrition-recent'] });
   };
 
-  const { data: meals = [] } = useQuery({
+  const mealsQuery = useQuery({
     queryKey: ['meals', activeDate],
     queryFn: () => api.get(`/nutrition/meals?date=${activeDate}`).then(r => r.data),
   });
+  const meals = mealsQuery.data ?? [];
 
-  const { data: totals = { calories: 0, proteins: 0, carbs: 0, fats: 0 } } = useQuery({
+  const totalsQuery = useQuery({
     queryKey: ['totals', activeDate],
     queryFn: () => api.get(`/nutrition/totals?date=${activeDate}`).then(r => r.data),
   });
+  const totals = totalsQuery.data ?? { calories: 0, proteins: 0, carbs: 0, fats: 0 };
 
   const { data: favorites = [] } = useQuery({
     queryKey: ['nutrition-favorites'],
@@ -108,6 +113,7 @@ export default function NutritionPage() {
     mutationFn: (data: any) => api.post('/nutrition/meals', { ...data, date: activeDate, mealType }),
     onSuccess: () => {
       invalidate();
+      setActionMessage('Repas ajouté au journal.');
       setResults([]);
       setQuantities({});
       setSearch('');
@@ -117,31 +123,52 @@ export default function NutritionPage() {
       setManualForm({ name: '', calories: '', proteins: '', carbs: '', fats: '' });
       setShowManual(false);
     },
+    onError: () => setActionMessage('Le repas n’a pas pu être enregistré. Tes champs restent disponibles ; réessaie.'),
   });
 
   // Ajoute tous les aliments sélectionnés du plateau en une fois
   const addAllSelected = useCallback(async () => {
     const toAdd = photoItems.filter((_, i) => selectedItems.has(i));
-    for (const item of toAdd) {
-      await api.post('/nutrition/meals', {
-        name: item.name,
-        calories: item.calories,
-        proteins: item.proteins,
-        carbs: item.carbs,
-        fats: item.fats,
-        date: activeDate,
-        mealType,
-      });
+    setBulkSaving(true);
+    setPhotoError('');
+    let saved = 0;
+    try {
+      for (let i = 0; i < photoItems.length; i++) {
+        if (!selectedItems.has(i)) continue;
+        const item = photoItems[i];
+        await api.post('/nutrition/meals', {
+          name: item.name,
+          calories: item.calories,
+          proteins: item.proteins,
+          carbs: item.carbs,
+          fats: item.fats,
+          date: activeDate,
+          mealType,
+        });
+        saved++;
+        setSelectedItems(current => {
+          const next = new Set(current);
+          next.delete(i);
+          return next;
+        });
+      }
+      invalidate();
+      setPhotoItems([]);
+      setSelectedItems(new Set());
+      setPreviewImg(null);
+      setActionMessage(`${saved} aliment${saved > 1 ? 's' : ''} ajouté${saved > 1 ? 's' : ''} au journal.`);
+    } catch (error) {
+      invalidate();
+      setPhotoError(`Enregistrement interrompu après ${saved} aliment${saved > 1 ? 's' : ''}. Les éléments restants sont encore sélectionnés ; tu peux réessayer sans dupliquer ceux déjà ajoutés.`);
+    } finally {
+      setBulkSaving(false);
     }
-    invalidate();
-    setPhotoItems([]);
-    setSelectedItems(new Set());
-    setPreviewImg(null);
-  }, [photoItems, selectedItems, mealType]);
+  }, [photoItems, selectedItems, mealType, activeDate]);
 
   const removeMeal = useMutation({
     mutationFn: (id: string) => api.delete(`/nutrition/meals/${id}`),
     onSuccess: invalidate,
+    onError: () => setActionMessage('Le repas n’a pas pu être supprimé. Réessaie.'),
   });
 
   // ── Ajout rapide : favoris, duplication, récents ──
@@ -149,20 +176,28 @@ export default function NutritionPage() {
 
   const applyFav = useMutation({
     mutationFn: (id: string) => api.post(`/nutrition/favorites/${id}/apply?date=${activeDate}`),
-    onSuccess: invalidate,
+    onSuccess: (res: any) => { invalidate(); setActionMessage(`${res?.data?.length ?? 0} repas ajouté${res?.data?.length === 1 ? '' : 's'} depuis le favori.`); },
+    onError: () => setActionMessage('Le favori n’a pas pu être appliqué. Réessaie.'),
   });
   const saveFav = useMutation({
     mutationFn: (body: any) => api.post('/nutrition/favorites', body),
-    onSuccess: invalidateFav,
-    onError: () => alert('Échec de l\'enregistrement du favori.'),
+    onSuccess: () => { invalidateFav(); setFavoriteForm(null); setActionMessage('Favori enregistré.'); },
+    onError: () => setActionMessage('Le favori n’a pas pu être enregistré. Réessaie.'),
   });
   const delFav = useMutation({
     mutationFn: (id: string) => api.delete(`/nutrition/favorites/${id}`),
     onSuccess: invalidateFav,
+    onError: () => setActionMessage('Le favori n’a pas pu être supprimé. Réessaie.'),
   });
   const dupDay = useMutation({
     mutationFn: (body: { from: string; to: string }) => api.post('/nutrition/duplicate', body),
-    onSuccess: (res: any) => { invalidate(); if (!res?.data?.length) alert('Aucun repas la veille à copier.'); },
+    onSuccess: (res: any) => {
+      invalidate();
+      setActionMessage(res?.data?.length
+        ? `${res.data.length} repas copié${res.data.length > 1 ? 's' : ''}.`
+        : 'Aucun repas trouvé à la date précédente.');
+    },
+    onError: () => setActionMessage('La copie des repas a échoué. Réessaie.'),
   });
 
   const favKcal = (f: any) => Math.round((f.entries ?? []).reduce((s: number, e: any) => s + (e.calories ?? 0), 0));
@@ -171,10 +206,8 @@ export default function NutritionPage() {
 
   const saveDayFavorite = () => {
     if (!meals.length) return;
-    const name = prompt('Nom du favori (combo de la journée) :', 'Mon combo');
-    if (!name?.trim()) return;
-    saveFav.mutate({
-      name: name.trim(),
+    setFavoriteForm({
+      name: 'Mon combo',
       entries: meals.map((m: any) => ({
         name: m.name, mealType: m.mealType, calories: m.calories, proteins: m.proteins, carbs: m.carbs, fats: m.fats,
       })),
@@ -182,10 +215,8 @@ export default function NutritionPage() {
   };
 
   const saveMealFavorite = (m: any) => {
-    const name = prompt('Nom du favori :', m.name);
-    if (!name?.trim()) return;
-    saveFav.mutate({
-      name: name.trim(),
+    setFavoriteForm({
+      name: m.name,
       entries: [{ name: m.name, mealType: m.mealType, calories: m.calories, proteins: m.proteins, carbs: m.carbs, fats: m.fats }],
     });
   };
@@ -195,9 +226,13 @@ export default function NutritionPage() {
   const handleSearch = async () => {
     if (!search.trim()) return;
     setSearching(true);
+    setSearchError('');
     try {
       const res = await api.get(`/nutrition/search?q=${encodeURIComponent(search)}`);
       setResults(res.data);
+      if (!res.data.length) setSearchError('Aucun aliment trouvé. Essaie un autre nom ou utilise la saisie manuelle.');
+    } catch {
+      setSearchError('La recherche est momentanément indisponible. Réessaie ou saisis les informations manuellement.');
     } finally {
       setSearching(false);
     }
@@ -208,16 +243,19 @@ export default function NutritionPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     setAnalyzing(true);
+    setPhotoError('');
     setPreviewImg(null);
+    setPortionNote('');
 
     try {
       // Convertir en base64
-      const base64 = await new Promise<string>((resolve) => {
+      const base64 = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => {
           const result = reader.result as string;
           resolve(result.split(',')[1]); // Retirer le préfixe data:image/...;base64,
         };
+        reader.onerror = () => reject(new Error('Lecture de la photo impossible.'));
         reader.readAsDataURL(file);
       });
 
@@ -244,8 +282,8 @@ export default function NutritionPage() {
         setShowManual(true);
         if (data.portionNote) setPortionNote(data.portionNote);
       }
-    } catch (err: any) {
-      alert(`Erreur analyse : ${err?.response?.data?.message ?? err?.message ?? 'inconnue'}`);
+    } catch {
+      setPhotoError('La photo n’a pas pu être analysée. Réessaie ou renseigne ton repas manuellement.');
     } finally {
       setAnalyzing(false);
       if (fileRef.current) fileRef.current.value = '';
@@ -253,8 +291,15 @@ export default function NutritionPage() {
   };
 
   const [portionNote, setPortionNote] = useState('');
+  const manualValues = [manualForm.calories, manualForm.proteins, manualForm.carbs, manualForm.fats];
+  const canSaveManual = Boolean(manualForm.name.trim()) && manualValues.every(value =>
+    value !== '' && Number.isFinite(Number(value)) && Number(value) >= 0,
+  );
+  useEffect(() => {
+    if (!previewImg) return;
+    return () => URL.revokeObjectURL(previewImg);
+  }, [previewImg]);
 
-  const pct = (val: number, goal: number) => Math.min(Math.round((val / goal) * 100), 100);
   const grouped = groupMealsByType(meals);
 
   return (
@@ -262,13 +307,13 @@ export default function NutritionPage() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Nutrition</h1>
-          <p className="page-sub">
-            {Math.round(totals.calories)} / {GOALS.calories} kcal
-          </p>
+          <p className="page-sub">{mealsQuery.isPending ? 'Chargement du journal…' : `${meals.length} repas noté${meals.length === 1 ? '' : 's'}`}</p>
         </div>
         {/* Navigateur de date */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button
+            type="button"
+            aria-label="Jour précédent"
             onClick={() => setActiveDate(d => offsetDate(d, -1))}
             style={{ background: 'var(--border)', border: 'none', borderRadius: 7, width: 32, height: 32, cursor: 'pointer', color: 'var(--text-muted)', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           >
@@ -283,6 +328,8 @@ export default function NutritionPage() {
             )}
           </div>
           <button
+            type="button"
+            aria-label="Jour suivant"
             onClick={() => setActiveDate(d => offsetDate(d, 1))}
             disabled={isToday}
             style={{ background: 'var(--border)', border: 'none', borderRadius: 7, width: 32, height: 32, cursor: isToday ? 'default' : 'pointer', color: isToday ? 'var(--border-md)' : 'var(--text-muted)', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
@@ -291,6 +338,7 @@ export default function NutritionPage() {
           </button>
           {!isToday && (
             <button
+              type="button"
               onClick={() => setActiveDate(getLocalToday())}
               style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent-dark)', borderRadius: 7, padding: '5px 12px', cursor: 'pointer', color: 'var(--accent)', fontSize: 11, fontFamily: 'inherit' }}
             >
@@ -298,27 +346,22 @@ export default function NutritionPage() {
             </button>
           )}
         </div>
+        <p className="form-hint">Les valeurs de l’analyse sont des estimations. Vérifie-les avant l’enregistrement ; indique 0 uniquement si c’est bien la valeur connue.</p>
       </div>
 
       {/* ── Compteurs macro ── */}
-      <div className="stat-row">
-        <div className="stat-card accent">
-          <div className="stat-val">{Math.round(totals.calories)}</div>
-          <div className="stat-lbl">{isToday ? "kcal aujourd'hui" : "kcal ce jour"}</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-val">{Math.max(0, GOALS.calories - Math.round(totals.calories))}</div>
-          <div className="stat-lbl">kcal restantes</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-val">{Math.round(totals.proteins)} g</div>
-          <div className="stat-lbl">Protéines</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-val">{Math.round(totals.carbs)} g</div>
-          <div className="stat-lbl">Glucides</div>
-        </div>
-      </div>
+      {mealsQuery.isError || totalsQuery.isError
+        ? <p className="feedback-error" role="alert">Le journal ne peut pas être chargé. <button type="button" onClick={() => { mealsQuery.refetch(); totalsQuery.refetch(); }}>Réessayer</button></p>
+        : mealsQuery.isPending || totalsQuery.isPending ? <p role="status">Chargement du journal…</p>
+          : meals.length > 0 && <div className="stat-row">
+            {[['Calories', `${Math.round(totals.calories)} kcal`], ['Protéines', `${Math.round(totals.proteins)} g`], ['Glucides', `${Math.round(totals.carbs)} g`], ['Lipides', `${Math.round(totals.fats)} g`]].map(([label, value], i) => (
+              <div className={`stat-card ${i === 0 ? 'accent' : ''}`} key={label}>
+                <div className="stat-val">{value}</div>                <div className="stat-lbl">Valeur enregistrée</div>
+              </div>
+            ))}
+          </div>}
+
+      {actionMessage && <p className="save-success" role="status">{actionMessage}</p>}
 
       {/* ── Ajout rapide : favoris, récents, répéter ── */}
       <div className="quick-add">
@@ -345,7 +388,7 @@ export default function NutritionPage() {
                   <span className="fav-name">{f.name}</span>
                   <span className="fav-kcal">{favKcal(f)} kcal{f.entries?.length > 1 ? ` · ${f.entries.length} items` : ''}</span>
                 </button>
-                <button className="fav-del" onClick={() => { if (confirm(`Supprimer le favori « ${f.name} » ?`)) delFav.mutate(f.id); }} title="Supprimer">
+                <button className="fav-del" aria-label={`Supprimer le favori ${f.name}`} onClick={() => { if (confirm(`Supprimer le favori « ${f.name} » ?`)) delFav.mutate(f.id); }} title="Supprimer">
                   <i className="ti ti-x" />
                 </button>
               </div>
@@ -371,12 +414,33 @@ export default function NutritionPage() {
         )}
       </div>
 
+      {favoriteForm && (
+        <form className="card favorite-form" onSubmit={e => {
+          e.preventDefault();
+          if (!favoriteForm.name.trim()) return;
+          saveFav.mutate({ name: favoriteForm.name.trim(), entries: favoriteForm.entries });
+        }}>
+          <label htmlFor="favorite-name">Nom du favori</label>
+          <input id="favorite-name" className="food-input" autoFocus maxLength={80}
+            value={favoriteForm.name} onChange={e => setFavoriteForm(current => current && ({ ...current, name: e.target.value }))} />
+          <div className="favorite-form-actions">
+            <button className="food-btn" type="submit" disabled={!favoriteForm.name.trim() || saveFav.isPending}>
+              {saveFav.isPending ? 'Enregistrement…' : 'Enregistrer le favori'}
+            </button>
+            <button className="food-btn" type="button" onClick={() => setFavoriteForm(null)}>Annuler</button>
+          </div>
+        </form>
+      )}
+
       {/* ── Sélecteur moment de la journée ── */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         {MEAL_TYPES.map(t => (
           <button
+            type="button"
             key={t.value}
             onClick={() => setMealType(t.value)}
+            aria-pressed={mealType === t.value}
+            aria-label={`Moment du repas : ${t.label}`}
             style={{
               flex: 1,
               background: mealType === t.value ? 'var(--bg-card)' : 'var(--border)',
@@ -397,9 +461,9 @@ export default function NutritionPage() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px', marginBottom: 12 }}>
         <i className="ti ti-bottle" style={{ fontSize: 20, color: '#a0ff40', flexShrink: 0 }} />
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)' }}>Shaker protéines</div>
+          <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)' }}>Shaker — estimation générique</div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-            {shakerScoops} scoop{shakerScoops > 1 ? 's' : ''} × 30g — {shakerScoops * SHAKER_PER_SCOOP.calories} kcal · P: {shakerScoops * SHAKER_PER_SCOOP.proteins}g
+            {shakerScoops} scoop{shakerScoops > 1 ? 's' : ''} × 30g — {shakerScoops * SHAKER_PER_SCOOP.calories} kcal · P: {shakerScoops * SHAKER_PER_SCOOP.proteins}g. Valeurs à vérifier sur l’étiquette.
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-main)', borderRadius: 7, border: '1px solid var(--border-md)', overflow: 'hidden' }}>
@@ -425,6 +489,7 @@ export default function NutritionPage() {
       <p className="section-head">Ajouter un aliment</p>
       <div className="add-food" style={{ marginBottom: 8 }}>
         <input
+          aria-label="Rechercher un aliment"
           className="food-input"
           placeholder="Ex : blanc de poulet, riz basmati…"
           value={search}
@@ -463,6 +528,8 @@ export default function NutritionPage() {
           onChange={handlePhoto}
         />
       </div>
+      {searchError && <p className="feedback-error" role="alert">{searchError}</p>}
+      {photoError && <p className="feedback-error" role="alert">{photoError}</p>}
 
       {/* ── Résultats Open Food Facts avec sélecteur de quantité ── */}
       {results.length > 0 && (
@@ -524,8 +591,8 @@ export default function NutritionPage() {
             </p>
             <div style={{ display: 'flex', gap: 6 }}>
               <button className="food-btn" style={{ fontSize: 11, padding: '4px 12px' }}
-                onClick={addAllSelected} disabled={selectedItems.size === 0}>
-                Ajouter la sélection ({selectedItems.size})
+                onClick={addAllSelected} disabled={selectedItems.size === 0 || bulkSaving}>
+                {bulkSaving ? 'Enregistrement…' : `Ajouter la sélection (${selectedItems.size})`}
               </button>
               <button className="food-btn" style={{ fontSize: 11, padding: '4px 10px', background: 'var(--border)', color: 'var(--text-muted)' }}
                 onClick={() => { setPhotoItems([]); setPreviewImg(null); }}>
@@ -544,26 +611,21 @@ export default function NutritionPage() {
                 borderRadius: 8, padding: '8px 10px', cursor: 'pointer', marginBottom: 4,
                 border: checked ? '1px solid var(--accent-dark)' : '1px solid transparent',
                 transition: 'all .15s',
-              }} onClick={() => setSelectedItems(s => {
-                const n = new Set(s);
-                n.has(i) ? n.delete(i) : n.add(i);
-                return n;
-              })}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
-                  <div style={{
-                    width: 18, height: 18, borderRadius: 4, flexShrink: 0,
-                    background: checked ? 'var(--accent)' : 'var(--border)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}>
-                    {checked && <i className="ti ti-check" style={{ fontSize: 11, color: '#000' }} />}
-                  </div>
+              }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
+                  <input type="checkbox" checked={checked} disabled={bulkSaving} aria-label={`Ajouter ${item.name}`}
+                    onChange={() => setSelectedItems(s => {
+                      const n = new Set(s);
+                      n.has(i) ? n.delete(i) : n.add(i);
+                      return n;
+                    })} />
                   <div>
                     <div className="meal-name">{item.name}</div>
                     <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
                       ~{item.portionG}g · {Math.round(item.calories)} kcal · P: {item.proteins}g · G: {item.carbs}g · L: {item.fats}g
                     </div>
-                  </div>
-                </div>
+                    </div>
+                  </label>
               </div>
             );
           })}
@@ -601,29 +663,22 @@ export default function NutritionPage() {
             />
           )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr', gap: 8, marginBottom: 10 }}>
-            <input className="food-input" placeholder="Nom" value={manualForm.name}
+          <div className="manual-meal-form">
+            <label>Nom<input className="food-input" placeholder="Nom de l’aliment ou du repas" value={manualForm.name}
               onChange={e => setManualForm(f => ({ ...f, name: e.target.value }))} />
-            <div>
-              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 3, textTransform: 'uppercase' }}>kcal</div>
-              <input className="food-input" type="number" placeholder="0" value={manualForm.calories}
+            </label>
+            <label>Calories (kcal)<input className="food-input" type="number" min="0" step="any" placeholder="0" value={manualForm.calories}
                 onChange={e => setManualForm(f => ({ ...f, calories: e.target.value }))} style={{ width: '100%' }} />
-            </div>
-            <div>
-              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 3, textTransform: 'uppercase' }}>Prot. g</div>
-              <input className="food-input" type="number" placeholder="0" value={manualForm.proteins}
+            </label>
+            <label>Protéines (g)<input className="food-input" type="number" min="0" step="any" placeholder="0" value={manualForm.proteins}
                 onChange={e => setManualForm(f => ({ ...f, proteins: e.target.value }))} style={{ width: '100%' }} />
-            </div>
-            <div>
-              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 3, textTransform: 'uppercase' }}>Gluc. g</div>
-              <input className="food-input" type="number" placeholder="0" value={manualForm.carbs}
+            </label>
+            <label>Glucides (g)<input className="food-input" type="number" min="0" step="any" placeholder="0" value={manualForm.carbs}
                 onChange={e => setManualForm(f => ({ ...f, carbs: e.target.value }))} style={{ width: '100%' }} />
-            </div>
-            <div>
-              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 3, textTransform: 'uppercase' }}>Lip. g</div>
-              <input className="food-input" type="number" placeholder="0" value={manualForm.fats}
+            </label>
+            <label>Lipides (g)<input className="food-input" type="number" min="0" step="any" placeholder="0" value={manualForm.fats}
                 onChange={e => setManualForm(f => ({ ...f, fats: e.target.value }))} style={{ width: '100%' }} />
-            </div>
+            </label>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="food-btn" onClick={() => addMeal.mutate({
@@ -632,7 +687,7 @@ export default function NutritionPage() {
               proteins: Number(manualForm.proteins),
               carbs:    Number(manualForm.carbs),
               fats:     Number(manualForm.fats),
-            })} disabled={!manualForm.name.trim()}>
+            })} disabled={!canSaveManual}>
               Enregistrer
             </button>
             <button className="food-btn" style={{ background: 'var(--border)', color: 'var(--text-muted)' }}
@@ -643,76 +698,50 @@ export default function NutritionPage() {
         </div>
       )}
 
-      {/* ── Layout principal ── */}
-      <div className="cols-2">
-        {/* Macros */}
-        <div>
-          <p className="section-head">Macros du jour</p>
-          <div className="card">
-            {[
-              { label: 'Protéines', val: totals.proteins, goal: GOALS.proteins, color: 'var(--accent)' },
-              { label: 'Glucides',  val: totals.carbs,    goal: GOALS.carbs,    color: 'var(--cyan)' },
-              { label: 'Lipides',   val: totals.fats,     goal: GOALS.fats,     color: 'var(--orange)' },
-            ].map(({ label, val, goal, color }) => (
-              <div key={label} style={{ marginBottom: 14 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 5 }}>
-                  <span style={{ color: 'var(--text-secondary)' }}>{label}</span>
-                  <span style={{ color: 'var(--text-muted)' }}>{Math.round(val)} / {goal} g</span>
-                </div>
-                <div style={{ height: 6, background: 'var(--border)', borderRadius: 99, overflow: 'hidden' }}>
-                  <div style={{ width: `${pct(val, goal)}%`, height: '100%', background: color, borderRadius: 99, transition: 'width .4s' }} />
-                </div>
-              </div>
-            ))}
+      <section aria-labelledby="meals-heading">
+        <p className="section-head" id="meals-heading">{formatDateLabel(activeDate)} · repas</p>
+        {meals.length === 0 && !mealsQuery.isPending && !mealsQuery.isError && (
+          <div className="card empty-guidance" role="status">
+            Aucun repas noté pour cette journée. Tu peux commencer par une recherche, une photo ou une saisie manuelle.
           </div>
-        </div>
-
-        {/* Repas groupés par moment */}
-        <div>
-          <p className="section-head">Repas du jour</p>
-          {meals.length === 0 && (
-            <div className="card">
-              <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>Aucun repas enregistré.</p>
+        )}
+        {grouped.map(group => (
+          <div key={group.value} style={{ marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <i className={`ti ${group.icon}`} style={{ fontSize: 13, color: group.color }} />
+              <span style={{ fontSize: 11, fontWeight: 600, color: group.color, textTransform: 'uppercase', letterSpacing: '.4px' }}>
+                {group.label}
+              </span>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                — {Math.round(group.meals.reduce((s: number, m: any) => s + m.calories, 0))} kcal notées
+              </span>
             </div>
-          )}
-          {grouped.map(group => (
-            <div key={group.value} style={{ marginBottom: 12 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                <i className={`ti ${group.icon}`} style={{ fontSize: 13, color: group.color }} />
-                <span style={{ fontSize: 11, fontWeight: 600, color: group.color, textTransform: 'uppercase', letterSpacing: '.4px' }}>
-                  {group.label}
-                </span>
-                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                  — {Math.round(group.meals.reduce((s: number, m: any) => s + m.calories, 0))} kcal
-                </span>
-              </div>
-              <div className="card" style={{ padding: '8px 12px' }}>
-                {group.meals.map((m: any) => (
-                  <div key={m.id} className="meal-row">
-                    <div>
-                      <div className="meal-name">{m.name}</div>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                        P: {Math.round(m.proteins)}g · G: {Math.round(m.carbs)}g · L: {Math.round(m.fats)}g
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span className="meal-kcal">{Math.round(m.calories)} kcal</span>
-                      <button onClick={() => saveMealFavorite(m)} title="Enregistrer comme favori"
-                        style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 14 }}>
-                        <i className="ti ti-star" />
-                      </button>
-                      <button onClick={() => removeMeal.mutate(m.id)}
-                        style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 15 }}>
-                        <i className="ti ti-x" />
-                      </button>
+            <div className="card" style={{ padding: '8px 12px' }}>
+              {group.meals.map((m: any) => (
+                <div key={m.id} className="meal-row">
+                  <div>
+                    <div className="meal-name">{m.name}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                      P: {Math.round(m.proteins)}g · G: {Math.round(m.carbs)}g · L: {Math.round(m.fats)}g
                     </div>
                   </div>
-                ))}
-              </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span className="meal-kcal">{Math.round(m.calories)} kcal</span>
+                    <button type="button" onClick={() => saveMealFavorite(m)} aria-label={`Enregistrer ${m.name} comme favori`} title="Enregistrer comme favori"
+                      style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 14 }}>
+                      <i className="ti ti-star" aria-hidden="true" />
+                    </button>
+                    <button type="button" onClick={() => removeMeal.mutate(m.id)} aria-label={`Supprimer ${m.name}`}
+                      style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 15 }}>
+                      <i className="ti ti-x" aria-hidden="true" />
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      </div>
+          </div>
+        ))}
+      </section>
 
       <style>{`
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

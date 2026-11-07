@@ -19,6 +19,40 @@ test('nested performed sets reject invalid repetitions', async () => {
   assert((await validate(dto)).length > 0);
 });
 
+test('strength progress uses actual performed sets, not planned summary weights', async () => {
+  const rows = [
+    { name: 'Planned lift', date: '2026-11-06', performedSets: null, weight: 150 },
+    { name: 'Bench press', date: '2026-11-06', performedSets: '[{"reps":8,"weight":20}]' },
+    { name: 'Bench press', date: '2026-11-07', performedSets: [{ reps: 8, weight: 22 }, { reps: 6, weight: 24 }] },
+    { name: 'Bench press', date: '2026-11-07', performedSets: [{ reps: 10, weight: 21 }] },
+    { name: 'Invalid set', date: '2026-11-06', performedSets: [{ reps: 0, weight: 50 }] },
+  ];
+  const query = {
+    innerJoin() { return this; },
+    select() { return this; },
+    addSelect() { return this; },
+    where() { return this; },
+    orderBy() { return this; },
+    addOrderBy() { return this; },
+    async getRawMany() { return rows; },
+  };
+  const service = new SportService({}, {}, { createQueryBuilder: () => query });
+  assert.deepEqual(await service.getStrengthProgress(), [{
+    name: 'Bench press',
+    data: [
+      { date: '2026-11-06', weight: 20 },
+      { date: '2026-11-07', weight: 24 },
+    ],
+  }]);
+  assert.deepEqual(await service.getStrengthProgress('bench'), [{
+    name: 'Bench press',
+    data: [
+      { date: '2026-11-06', weight: 20 },
+      { date: '2026-11-07', weight: 24 },
+    ],
+  }]);
+});
+
 test('PostgreSQL migrations preserve old rows; imports and sessions are atomic', {
   skip: !process.env.SPORT_TEST_DATABASE_URL,
 }, async () => {
@@ -71,6 +105,21 @@ test('PostgreSQL migrations preserve old rows; imports and sessions are atomic',
     assert.equal(actual.exercises[0].reps, null);
     assert.equal(actual.exercises[0].weight, 22);
     assert.deepEqual(actual.exercises[0].performedSets.map(s => s.reps), [8, 8, 6]);
+    await service.createSession({
+      name: 'Second test session', type: SessionType.PECS_TRICEPS, date: '2026-11-06',
+      exercises: [
+        { name: 'Test lift', performedSets: [{ reps: 8, weight: 24 }] },
+        { name: 'Reference-only lift', weight: 99 },
+      ],
+    });
+    const progress = await service.getStrengthProgress();
+    assert.deepEqual(progress, [{
+      name: 'Test lift',
+      data: [
+        { date: '2026-11-06', weight: 24 },
+        { date: '2026-11-07', weight: 22 },
+      ],
+    }], 'Progress uses performed sets only, never template or legacy summary weights');
     await assert.rejects(service.createSession({
       name: 'Rollback session', type: SessionType.OTHER, date: '2026-11-07',
       exercises: [{ name: 'Invalid exercise', templateExerciseId: 'not-a-uuid' }],
@@ -78,6 +127,7 @@ test('PostgreSQL migrations preserve old rows; imports and sessions are atomic',
     assert.equal(await sessions.count(), 1, 'Failed exercise must roll back its session');
     await service.updateExercise(actual.exercises[0].id, { performedSets: [], name: 'Test lift' });
     assert.equal((await exercises.findOneByOrFail({ id: actual.exercises[0].id })).weight, null);
+    assert.deepEqual(await service.getStrengthProgress(), [], 'Removing performed sets removes the progress point');
   } finally {
     if (ds.isInitialized) await ds.destroy();
   }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import api from '../services/api';
@@ -6,38 +6,31 @@ import { TYPE_CONFIG, ExForm, ExerciseRow } from './SportPage';
 import { getLocalDateString } from '../utils/date';
 import SetTracker, { SetEntry, validSets } from '../components/SetTracker';
 import { AxiosError } from 'axios';
+import { clearWorkoutDraft, hasWorkoutProgress, readWorkoutDraft, WorkoutDraft, WorkoutDraftExercise, writeWorkoutDraft } from '../utils/workoutDraft';
 
-interface DraftEx {
-  _id: string;
-  name: string;
-  sets?: number | null;
-  reps?: number | null;
-  weight?: number | null;
-  restSeconds?: number | null;
-  durationSeconds?: number | null;
-  distanceKm?: number | null;
-  avgSpeedKmh?: number | null;
-  notes?: string | null;
-  templateExerciseId?: string;
-  performedSets: SetEntry[];
-}
+type DraftEx = WorkoutDraftExercise;
 
 export default function SeanceDuJourPage() {
   const today = getLocalDateString();
   const [searchParams] = useSearchParams();
   const requestedTemplate = searchParams.get('template');
   const initializedTemplate = useRef<string | null>(null);
+  const restored = useMemo(() => readWorkoutDraft(), []);
+  const [restoredDraft, setRestoredDraft] = useState(Boolean(restored.draft && hasWorkoutProgress(restored.draft)));
   const qc = useQueryClient();
-  const idRef = useRef(0);
+  const idRef = useRef(restored.draft?.exercises.length ?? 0);
   const newId = () => `d${idRef.current++}`;
 
-  const [type, setType] = useState('pecs_triceps');
-  const [templateId, setTemplateId] = useState<string | null>(null);
-  const [name, setName] = useState('');
-  const [durationMinutes, setDurationMinutes] = useState<number>(60);
-  const [notes, setNotes] = useState('');
-  const [exercises, setExercises] = useState<DraftEx[]>([]);
+  const [type, setType] = useState(restored.draft?.type ?? 'pecs_triceps');
+  const [templateId, setTemplateId] = useState<string | null>(restored.draft?.templateId ?? null);
+  const [name, setName] = useState(restored.draft?.name ?? '');
+  const [durationMinutes, setDurationMinutes] = useState<number>(restored.draft?.durationMinutes ?? 60);
+  const [notes, setNotes] = useState(restored.draft?.notes ?? '');
+  const [date, setDate] = useState(restored.draft?.date ?? today);
+  const [exercises, setExercises] = useState<DraftEx[]>(restored.draft?.exercises ?? []);
   const [showAdd, setShowAdd] = useState(false);
+  const [draftStorageError, setDraftStorageError] = useState(restored.unavailable);
+  const [draftSavedAt, setDraftSavedAt] = useState(restored.draft?.savedAt ?? '');
 
   const { data: templates = [] } = useQuery({
     queryKey: ['templates'],
@@ -51,9 +44,19 @@ export default function SeanceDuJourPage() {
   });
 
   const cfg = TYPE_CONFIG[type] ?? TYPE_CONFIG.other;
+  const hasDraft = hasWorkoutProgress({ date, type, templateId, name, durationMinutes, notes, exercises, savedAt: draftSavedAt });
+  const dateLabel = date
+    ? new Date(`${date}T00:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
+    : '';
 
   // Choix d'un contrat ou d'un type → pré-remplit + importe les exercices du contrat
-  const pick = (value: string) => {
+  const pick = (value: string, replace = false) => {
+    const currentDraft: WorkoutDraft = { date, type, templateId, name, durationMinutes, notes, exercises, savedAt: draftSavedAt };
+    if (hasWorkoutProgress(currentDraft) && !replace) {
+      if (!window.confirm('Remplacer le brouillon en cours ? Il sera effacé de cet appareil.')) return;
+      clearWorkoutDraft();
+      setRestoredDraft(false);
+    }
     if (value.startsWith('c:')) {
       const tpl = (templates as any[]).find((t: any) => t.id === value.slice(2));
       if (!tpl) return;
@@ -62,7 +65,7 @@ export default function SeanceDuJourPage() {
       setName(tpl.name);
       setDurationMinutes(tpl.durationMinutes ?? 60);
       setExercises((tpl.templateExercises ?? []).map((e: any) => ({
-        _id: newId(),
+        _id: e.id || newId(),
         templateExerciseId: e.id,
         performedSets: [],
         name: e.name, sets: e.sets ?? null, reps: e.reps ?? null, weight: e.weight ?? null,
@@ -72,29 +75,49 @@ export default function SeanceDuJourPage() {
     } else {
       setTemplateId(null);
       setType(value.slice(2));
+      setName('');
+      setExercises([]);
     }
   };
 
   useEffect(() => {
+    if (restoredDraft) return;
     if (!requestedTemplate || initializedTemplate.current === requestedTemplate) return;
     if (!(templates as any[]).some(t => t.id === requestedTemplate)) return;
     initializedTemplate.current = requestedTemplate;
-    pick(`c:${requestedTemplate}`);
+    pick(`c:${requestedTemplate}`, true);
   }, [requestedTemplate, templates]);
+
+  useEffect(() => {
+    const draft: WorkoutDraft = {
+      date, type, templateId, name, durationMinutes, notes, exercises,
+      savedAt: new Date().toISOString(),
+    };
+    if (!hasWorkoutProgress(draft)) {
+      clearWorkoutDraft();
+      setDraftSavedAt('');
+      return;
+    }
+    const saved = writeWorkoutDraft(draft);
+    setDraftStorageError(!saved);
+    if (saved) setDraftSavedAt(draft.savedAt);
+  }, [date, type, templateId, name, durationMinutes, notes, exercises]);
 
   const addEx = (data: Omit<DraftEx, '_id' | 'performedSets'>) => { setExercises(xs => [...xs, { ...data, performedSets: [], _id: newId() }]); setShowAdd(false); };
   const updateEx = (id: string, data: any) => setExercises(xs => xs.map(x => x._id === id ? { ...x, ...data, _id: id } : x));
   const deleteEx = (id: string) => setExercises(xs => xs.filter(x => x._id !== id));
 
   const reset = () => {
-    setTemplateId(null); setType('pecs_triceps'); setName(''); setDurationMinutes(60);
+    clearWorkoutDraft();
+    setRestoredDraft(false);
+    setTemplateId(null); setType('pecs_triceps'); setName(''); setDurationMinutes(60); setDate(today);
     setNotes(''); setExercises([]); setShowAdd(false);
   };
 
   const validate = useMutation({
     mutationFn: async () => {
       return api.post('/sport/sessions', {
-        name: name.trim() || cfg.label, type, date: today,
+        name: name.trim() || cfg.label, type, date,
         durationMinutes, notes: notes.trim() || undefined, templateId: templateId || undefined,
         exercises: exercises.filter(ex => ex.performedSets.length > 0 ||
           type === 'cardio' && (ex.durationSeconds || ex.distanceKm)).map(ex => ({
@@ -118,20 +141,29 @@ export default function SeanceDuJourPage() {
   });
   const hasPerformance = exercises.some(ex => ex.performedSets.length > 0 ||
     type === 'cardio' && (ex.durationSeconds || ex.distanceKm));
-  const isValid = hasPerformance && exercises.every(ex => validSets(ex.performedSets)) &&
+  const isValid = Boolean(date) && hasPerformance && exercises.every(ex => validSets(ex.performedSets)) &&
     Number.isFinite(durationMinutes) && durationMinutes >= 1;
   const saveError = validate.error instanceof AxiosError ? validate.error.response?.data?.message : undefined;
-
-  const dateLabel = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
 
   return (
     <div className="page sdj">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Séance du jour</h1>
+          <h1 className="page-title">Préparer une séance</h1>
           <p className="page-sub" style={{ textTransform: 'capitalize' }}>{dateLabel}</p>
         </div>
       </div>
+
+      {hasDraft && (
+        <div className="draft-status" role="status">
+          <div><strong>{restoredDraft ? 'Brouillon repris' : 'Brouillon en cours'}</strong><span>Enregistré sur cet appareil{draftSavedAt ? ` · ${new Date(draftSavedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : ''}</span></div>
+          <button type="button" className="quiet-link" onClick={() => {
+            if (!window.confirm('Effacer ce brouillon ? Cette action est définitive.')) return;
+            reset();
+          }}>Effacer</button>
+        </div>
+      )}
+      {draftStorageError && <p className="feedback-error" role="alert">La sauvegarde locale est indisponible sur cet appareil. Garde cette page ouverte jusqu’à l’enregistrement.</p>}
 
       {/* Choix de la séance */}
       <div className="card sdj-card">
@@ -157,8 +189,9 @@ export default function SeanceDuJourPage() {
         <div className="sdj-meta">
           <div className={`sess-icon ${cfg.color}`}><i className={`ti ${cfg.icon}`} /></div>
           <input aria-label="Nom de la séance" className="food-input" placeholder="Nom de la séance" value={name} onChange={e => setName(e.target.value)} style={{ flex: 1 }} />
-          <input className="food-input" type="number" value={durationMinutes} onChange={e => setDurationMinutes(Number(e.target.value))} style={{ width: 80 }} title="Durée (min)" />
+          <label className="duration-field">Durée (min)<input className="food-input" type="number" min="1" value={durationMinutes} onChange={e => setDurationMinutes(Number(e.target.value))} /></label>
         </div>
+        <label className="duration-field session-date-field">Date de la séance<input className="food-input" type="date" value={date} onChange={e => setDate(e.target.value)} required /></label>
       </div>
 
       {/* Exercices (adaptables) */}
@@ -198,7 +231,7 @@ export default function SeanceDuJourPage() {
       </div>
 
       {/* Notes + validation */}
-      <input className="food-input" placeholder="Notes (optionnel)" value={notes} onChange={e => setNotes(e.target.value)} style={{ marginTop: 14, marginBottom: 14 }} />
+      <label className="notes-field">Notes de séance (facultatif)<textarea className="food-input" placeholder="Comment tu t’es senti ? Une note à garder ?" value={notes} onChange={e => setNotes(e.target.value)} rows={3} /></label>
 
       {validate.isError && <p className="feedback-error" role="alert">{typeof saveError === 'string' ? saveError : 'Enregistrement impossible. Tes saisies sont conservées ; vérifie la connexion et réessaie.'}</p>}
       {validate.isSuccess && <p role="status" className="save-success">Séance enregistrée avec ses séries. Retrouve-la dans ton carnet Sport.</p>}
@@ -207,7 +240,7 @@ export default function SeanceDuJourPage() {
           ? <><i className="ti ti-loader-2 spin" /> Enregistrement…</>
           : <><i className="ti ti-circle-check" /> Valider la séance</>}
       </button>
-      <p className="sdj-hint">La séance sera enregistrée à la date d'aujourd'hui et apparaîtra dans ta vue semaine et tes stats.</p>
+      <p className="sdj-hint">{dateLabel ? `La séance sera enregistrée au ${dateLabel} et apparaîtra dans ta vue semaine et tes stats.` : 'Choisis une date pour enregistrer ta séance.'}</p>
     </div>
   );
 }

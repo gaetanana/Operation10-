@@ -163,43 +163,47 @@ export class SportService {
   // ─── Progression des charges ──────────────────────────────────────────────────
 
   async getStrengthProgress(exerciseName?: string) {
-    // Si un nom précis est demandé, on filtre dessus
-    // Sinon on retourne les données pour tous les exercices muscu avec au moins 3 occurrences
-
-    const qb = this.exerciseRepo
-      .createQueryBuilder('e')
-      .innerJoin('e.session', 's')
-      .select('e.name', 'name')
-      .addSelect('MAX(e.weight)', 'maxWeight')
-      .addSelect('s.date', 'date')
-      .where('e.weight IS NOT NULL')
-      .andWhere('e.weight > 0');
-
-    if (exerciseName) {
-      qb.andWhere('LOWER(e.name) LIKE :name', { name: `%${exerciseName.toLowerCase()}%` });
-    }
-
-    // Récupérer le max de charge par exercice par jour
-    const rawRows: { name: string; maxWeight: string; date: string }[] =
+    const rawRows: { name: string; date: string; performedSets: unknown }[] =
       await this.exerciseRepo
         .createQueryBuilder('e')
         .innerJoin('e.session', 's')
         .select('e.name', 'name')
         .addSelect('s.date', 'date')
-        .addSelect('MAX(e.weight)', 'maxWeight')
-        .where('e.weight IS NOT NULL')
-        .andWhere('e.weight > 0')
-        .groupBy('e.name')
-        .addGroupBy('s.date')
+        .addSelect('e.performedSets', 'performedSets')
+        .where('e.performedSets IS NOT NULL')
         .orderBy('e.name', 'ASC')
         .addOrderBy('s.date', 'ASC')
         .getRawMany();
 
-    // Grouper par nom d'exercice
-    const map = new Map<string, { date: string; weight: number }[]>();
+    // Reference weights and legacy summary weights are not confirmed performances.
+    const dailyMax = new Map<string, number>();
     for (const row of rawRows) {
-      if (!map.has(row.name)) map.set(row.name, []);
-      map.get(row.name)!.push({ date: row.date, weight: Number(row.maxWeight) });
+      if (exerciseName && !row.name.toLowerCase().includes(exerciseName.toLowerCase())) continue;
+      let sets: unknown = row.performedSets;
+      if (typeof sets === 'string') {
+        try {
+          sets = JSON.parse(sets);
+        } catch {
+          continue;
+        }
+      }
+      if (!Array.isArray(sets)) continue;
+      const weights = sets
+        .filter((set): set is { reps: number; weight?: number } =>
+          Boolean(set) && Number.isInteger(set.reps) && set.reps > 0 &&
+          Number.isFinite(set.weight) && set.weight > 0,
+        )
+        .map(set => set.weight as number);
+      if (weights.length === 0) continue;
+      const key = `${row.name}\u0000${row.date}`;
+      dailyMax.set(key, Math.max(dailyMax.get(key) ?? 0, ...weights));
+    }
+
+    const map = new Map<string, { date: string; weight: number }[]>();
+    for (const [key, weight] of dailyMax) {
+      const [name, date] = key.split('\u0000');
+      if (!map.has(name)) map.set(name, []);
+      map.get(name)!.push({ date, weight });
     }
 
     // Garder seulement les exercices avec ≥ 2 points de données

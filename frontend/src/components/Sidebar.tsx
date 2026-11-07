@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 
 const links = [
   { to: '/', icon: 'ti-sun', label: 'Aujourd’hui' },
-  { to: '/sport', icon: 'ti-barbell', label: 'Sport' },
+  { to: '/sport', icon: 'ti-barbell', label: 'Entraînement' },
   { to: '/nutrition', icon: 'ti-salad', label: 'Nutrition' },
 ];
 
@@ -39,7 +39,6 @@ export default function Sidebar({ onLogout, loggingOut }: {
           {open && (
             <div className="more-panel" id="more-navigation">
               <NavLink to="/stats"><i className="ti ti-chart-line" aria-hidden="true" /> Progression</NavLink>
-              <NavLink to="/todo"><i className="ti ti-checklist" aria-hidden="true" /> Tâches</NavLink>
               <button onClick={onLogout} disabled={loggingOut}><i className="ti ti-logout" aria-hidden="true" />{loggingOut ? 'Déconnexion…' : 'Se déconnecter'}</button>
             </div>
           )}

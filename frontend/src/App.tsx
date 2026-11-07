@@ -6,16 +6,17 @@ import Sidebar from './components/Sidebar';
 import DashboardPage from './pages/DashboardPage';
 import SeanceDuJourPage from './pages/SeanceDuJourPage';
 import LoginPage from './pages/LoginPage';
-import TodoPage from './pages/TodoPage';
 import SportPage from './pages/SportPage';
 import NutritionPage from './pages/NutritionPage';
 import StatsPage from './pages/StatsPage';
 import api from './services/api';
+import { clearWorkoutDraft, hasWorkoutProgress, readWorkoutDraft } from './utils/workoutDraft';
 
 export default function App() {
   const queryClient = useQueryClient();
   useEffect(() => {
     const expireSession = () => {
+      clearWorkoutDraft();
       queryClient.clear();
       queryClient.setQueryData(['auth', 'session'], { authenticated: false });
     };
@@ -32,6 +33,7 @@ export default function App() {
   const logout = useMutation({
     mutationFn: () => api.post('/auth/logout'),
     onSuccess: () => {
+      clearWorkoutDraft();
       queryClient.clear();
       queryClient.setQueryData(['auth', 'session'], { authenticated: false });
     },
@@ -58,12 +60,16 @@ export default function App() {
   return (
     <div className="app-layout">
       <a className="skip-link" href="#main-content">Aller au contenu</a>
-      <Sidebar onLogout={() => logout.mutate()} loggingOut={logout.isPending} />
+      <Sidebar onLogout={() => {
+        const { draft } = readWorkoutDraft();
+        if (draft && hasWorkoutProgress(draft) && !window.confirm('La déconnexion supprimera le brouillon de séance enregistré sur cet appareil. Continuer ?')) return;
+        logout.mutate();
+      }} loggingOut={logout.isPending} />
       <main className="app-main" id="main-content" tabIndex={-1}>
         {logout.isError && <div role="alert" className="feedback-error">La déconnexion a échoué. Réessaie depuis le menu.</div>}
         <Routes>
           <Route path="/" element={<DashboardPage />} />
-          <Route path="/todo" element={<TodoPage />} />
+          <Route path="/todo" element={<Navigate to="/" replace />} />
           <Route path="/seance" element={<SeanceDuJourPage />} />
           <Route path="/sport" element={<SportPage />} />
           <Route path="/nutrition" element={<NutritionPage />} />

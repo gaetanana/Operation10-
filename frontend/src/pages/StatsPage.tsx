@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '../services/api';
-import { getLocalDateString } from '../utils/date';
 
 const TYPE_LABELS: Record<string, { label: string; color: string }> = {
   pecs_triceps: { label: 'Pecs / Triceps', color: '#d070ff' },
@@ -16,6 +15,22 @@ const TYPE_LABELS: Record<string, { label: string; color: string }> = {
 };
 
 const MONTH_NAMES = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
+
+interface SessionSummary {
+  id: string;
+  type: string;
+  date: string;
+}
+
+function localDateKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function localMonday(date: Date): Date {
+  const monday = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+  return monday;
+}
 
 function MiniBar({ value, max, color }: { value: number; max: number; color: string }) {
   const pct = max > 0 ? Math.round((value / max) * 100) : 0;
@@ -88,19 +103,36 @@ function StrengthChart({ data }: { data: { date: string; weight: number }[] }) {
 export default function StatsPage() {
   const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
 
-  const { data: stats } = useQuery({
-    queryKey: ['sport-stats'],
-    queryFn: () => api.get('/sport/stats').then(r => r.data),
+  const sessionsQuery = useQuery({
+    queryKey: ['sessions'],
+    queryFn: () => api.get<SessionSummary[]>('/sport/sessions').then(r => r.data),
   });
 
-  const { data: nutritionTotals } = useQuery({
-    queryKey: ['totals', getLocalDateString()],
-    queryFn: () => api.get(`/nutrition/totals?date=${getLocalDateString()}`).then(r => r.data),
-  });
-
-  const byType: Record<string, number> = stats?.byType ?? {};
+  const sessions = sessionsQuery.data ?? [];
+  const now = new Date();
+  const thisMonday = localMonday(now);
+  const monthStart = localDateKey(new Date(now.getFullYear(), now.getMonth(), 1));
+  const monthEnd = localDateKey(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+  const weekStart = localDateKey(thisMonday);
+  const thisWeek = sessions.filter(session => session.date >= weekStart && session.date <= localDateKey(now)).length;
+  const thisMonthSessions = sessions.filter(session => session.date >= monthStart && session.date <= monthEnd);
+  const byType = thisMonthSessions.reduce<Record<string, number>>((counts, session) => {
+    counts[session.type] = (counts[session.type] ?? 0) + 1;
+    return counts;
+  }, {});
   const maxByType = Math.max(...Object.values(byType), 1);
-  const last8Weeks: { week: string; count: number }[] = stats?.last8Weeks ?? [];
+  const last8Weeks = Array.from({ length: 8 }, (_, index) => {
+    const monday = new Date(thisMonday);
+    monday.setDate(monday.getDate() - (7 * (7 - index)));
+    const week = localDateKey(monday);
+    const nextMonday = new Date(monday);
+    nextMonday.setDate(nextMonday.getDate() + 7);
+    return {
+      week,
+      count: sessions.filter(session => session.date >= week && session.date < localDateKey(nextMonday)).length,
+      current: index === 7,
+    };
+  });
   const maxWeek = Math.max(...last8Weeks.map(w => w.count), 1);
 
   const { data: strengthData = [] } = useQuery<{ name: string; data: { date: string; weight: number }[] }[]>({
@@ -108,40 +140,29 @@ export default function StatsPage() {
     queryFn: () => api.get('/sport/strength-progress').then(r => r.data),
   });
 
-  // Objectif contrat = somme des objectifs hebdo (×N par semaine)
-  const { data: templates = [] } = useQuery({
-    queryKey: ['templates'],
-    queryFn: () => api.get('/sport/templates').then(r => r.data),
-  });
-  const contractTarget = (templates as any[]).reduce((n: number, t: any) => n + (t.weeklyTarget ?? 1), 0);
-  const weekProgress = contractTarget > 0 ? Math.round(((stats?.thisWeek ?? 0) / contractTarget) * 100) : 0;
-
   return (
     <div className="page">
       <div className="page-header">
         <div>
           <h1 className="page-title">Statistiques</h1>
-          <p className="page-sub">Vue globale de ta progression</p>
+          <p className="page-sub">Des repères construits uniquement à partir de tes séances enregistrées.</p>
         </div>
       </div>
+      {sessionsQuery.isError && <p className="feedback-error" role="alert">L’historique sportif n’a pas pu être chargé. <button type="button" onClick={() => sessionsQuery.refetch()}>Réessayer</button></p>}
 
       {/* ── Chiffres clés ── */}
       <div className="stat-row" style={{ marginBottom: 24 }}>
         <div className="stat-card accent">
-          <div className="stat-val">{stats?.thisMonth ?? 0}</div>
+          <div className="stat-val">{sessionsQuery.isPending ? '…' : thisMonthSessions.length}</div>
           <div className="stat-lbl">Séances ce mois</div>
         </div>
         <div className="stat-card">
-          <div className="stat-val">{stats?.thisWeek ?? 0} / {contractTarget}</div>
-          <div className="stat-lbl">Contrat cette semaine</div>
+          <div className="stat-val">{sessionsQuery.isPending ? '…' : thisWeek}</div>
+          <div className="stat-lbl">Séances cette semaine</div>
         </div>
         <div className="stat-card">
-          <div className="stat-val">{stats?.total ?? 0}</div>
+          <div className="stat-val">{sessionsQuery.isPending ? '…' : sessions.length}</div>
           <div className="stat-lbl">Séances totales</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-val">{stats?.totalExercises ?? 0}</div>
-          <div className="stat-lbl">Exercices loggés</div>
         </div>
       </div>
 
@@ -150,8 +171,8 @@ export default function StatsPage() {
         <div>
           <p className="section-head">Répartition ce mois</p>
           <div className="card">
-            {Object.keys(TYPE_LABELS).filter(k => byType[k] > 0).length === 0 && (
-              <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>Aucune séance ce mois.</p>
+            {Object.keys(TYPE_LABELS).filter(k => byType[k] > 0).length === 0 && !sessionsQuery.isPending && !sessionsQuery.isError && (
+              <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>Aucune séance enregistrée ce mois.</p>
             )}
             {Object.entries(TYPE_LABELS)
               .filter(([k]) => byType[k] > 0)
@@ -172,21 +193,21 @@ export default function StatsPage() {
         <div>
           <p className="section-head">Activité — 8 semaines</p>
           <div className="card">
-            {last8Weeks.length === 0 && (
-              <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>Pas encore assez de données.</p>
+            {sessionsQuery.isPending ? <p role="status">Chargement de l’historique…</p> : null}
+            {!sessionsQuery.isPending && !sessionsQuery.isError && sessions.length === 0 && (
+              <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>Aucune séance enregistrée pour le moment.</p>
             )}
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 100 }}>
               {last8Weeks.map((w) => {
                 const pct = maxWeek > 0 ? (w.count / maxWeek) * 100 : 0;
                 const date = new Date(w.week + 'T00:00:00');
-                const isCurrentWeek = Math.abs(date.getTime() - new Date().getTime()) < 7 * 86400000;
                 return (
-                  <div key={w.week} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                  <div key={w.week} aria-label={`${date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })} : ${w.count} séance${w.count === 1 ? '' : 's'}`} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
                     <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: w.count > 0 ? 600 : 400 }}>{w.count}</span>
                     <div style={{
                       width: '100%', borderRadius: 4,
-                      height: `${Math.max(pct, 4)}%`,
-                      background: isCurrentWeek ? 'var(--accent)' : 'var(--border-md)',
+                      height: `${w.count ? Math.max(pct, 4) : 0}%`,
+                      background: w.current ? 'var(--accent)' : 'var(--border-md)',
                       minHeight: 4,
                       transition: 'height .4s ease',
                     }} />
@@ -201,27 +222,9 @@ export default function StatsPage() {
         </div>
       </div>
 
-      {/* ── Objectif semaine ── */}
-      <p className="section-head" style={{ marginTop: 24 }}>Objectif contrat — semaine en cours</p>
-      <div className="card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: 13 }}>
-          <span style={{ color: 'var(--text-secondary)' }}>{stats?.thisWeek ?? 0} séances réalisées sur {contractTarget} prévues</span>
-          <span style={{ color: weekProgress >= 100 ? 'var(--accent)' : 'var(--text-muted)', fontWeight: 600 }}>{weekProgress}%</span>
-        </div>
-        <div style={{ height: 8, background: 'var(--border)', borderRadius: 99, overflow: 'hidden' }}>
-          <div style={{
-            width: `${Math.min(weekProgress, 100)}%`, height: '100%',
-            background: weekProgress >= 100 ? 'var(--accent)' : 'var(--cyan)',
-            borderRadius: 99, transition: 'width .5s ease',
-          }} />
-        </div>
-        {weekProgress >= 100 && (
-          <p style={{ fontSize: 12, color: 'var(--accent)', marginTop: 8 }}>🔥 Contrat de la semaine respecté !</p>
-        )}
-      </div>
-
       {/* ── Progression des charges ── */}
       <p className="section-head" style={{ marginTop: 24 }}>Progression des charges</p>
+      <p className="page-sub">Charge maximale d’une série réellement renseignée, par date. Les charges de référence du programme ne sont pas incluses.</p>
       {strengthData.length === 0 ? (
         <div className="card" style={{ color: 'var(--text-muted)', fontSize: 13, padding: '20px 16px', textAlign: 'center' }}>
           <i className="ti ti-chart-line" style={{ fontSize: 28, display: 'block', marginBottom: 8, opacity: .4 }} />
