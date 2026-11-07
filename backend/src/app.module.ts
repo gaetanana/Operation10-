@@ -10,6 +10,7 @@ import { Todo } from './todo/todo.entity';
 import { SessionTemplate, Exercise } from './sport/sport.entity';
 import { AuthModule } from './auth/auth.module';
 import { InitialSchema1762369200000 } from './migrations/1762369200000-InitialSchema';
+import { SessionTemplateWeeklyTarget1794043200000 } from './migrations/1794043200000-SessionTemplateWeeklyTarget';
 
 @Module({
   imports: [
@@ -21,7 +22,7 @@ import { InitialSchema1762369200000 } from './migrations/1762369200000-InitialSc
         url: config.get<string>('DATABASE_URL'),
         autoLoadEntities: true,
         synchronize: config.get<string>('NODE_ENV') !== 'production',
-        migrations: [InitialSchema1762369200000],
+        migrations: [InitialSchema1762369200000, SessionTemplateWeeklyTarget1794043200000],
         migrationsRun: config.get<string>('NODE_ENV') === 'production',
       }),
     }),

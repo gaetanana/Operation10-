@@ -19,6 +19,7 @@ Application personnelle de suivi des tâches, du sport et de la nutrition.
 6. Ouvrir <http://localhost:5173>.
 
 En développement, TypeORM synchronise le schéma automatiquement. En production, une migration versionnée crée les tables au premier déploiement.
+Les migrations suivantes sont appliquées automatiquement avant le démarrage, y compris sur une base déjà initialisée. La migration des contrats hebdomadaires ajoute `weeklyTarget` avec une valeur par défaut de 1 sans supprimer les contrats existants.
 
 ## Déploiement personnel gratuit
 
