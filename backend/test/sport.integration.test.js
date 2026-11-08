@@ -6,7 +6,9 @@ const { plainToInstance } = require('class-transformer');
 const { validate } = require('class-validator');
 const { Session, SessionTemplate, Exercise, SessionType } = require('../dist/sport/sport.entity');
 const { SportService } = require('../dist/sport/sport.service');
-const { CreateSessionDto } = require('../dist/sport/sport.dto');
+const { CreateSessionDto, UpdatePersonalProgramDto } = require('../dist/sport/sport.dto');
+const { referenceProgram } = require('../dist/sport/sport.reference');
+const { randomUUID } = require('node:crypto');
 const { InitialSchema1762369200000 } = require('../dist/migrations/1762369200000-InitialSchema');
 const { SessionTemplateWeeklyTarget1794043200000 } = require('../dist/migrations/1794043200000-SessionTemplateWeeklyTarget');
 const { PerformedSets1794056400000 } = require('../dist/migrations/1794056400000-PerformedSets');
@@ -17,6 +19,96 @@ test('nested performed sets reject invalid repetitions', async () => {
     exercises: [{ name: 'Test exercise', performedSets: [{ reps: -1, weight: 10 }] }],
   });
   assert((await validate(dto)).length > 0);
+});
+
+function personalProgramFixture(initial = []) {
+  const rows = structuredClone(initial);
+  const repository = {
+    async find() { return structuredClone(rows); },
+    create(data) { return { ...data }; },
+    async save(data) {
+      const saved = { ...data, id: data.id ?? randomUUID() };
+      const index = rows.findIndex(row => row.id === saved.id);
+      if (index < 0) rows.push(saved); else rows[index] = saved;
+      return structuredClone(saved);
+    },
+    manager: {
+      async transaction(fn) {
+        return fn({ query: async () => [], getRepository: () => repository });
+      },
+    },
+  };
+  return { service: new SportService({}, repository, {}), rows };
+}
+
+test('personal programme is readable without creating templates or performances', async () => {
+  const { service, rows } = personalProgramFixture([{ id: randomUUID(), name: 'Legacy', templateExercises: [] }]);
+  const program = await service.getPersonalProgram();
+  assert.equal(program.length, 4);
+  assert.deepEqual(program.map(p => p.exercises[0].weight), [32, 25, 150, 47.5]);
+  assert(program.every(p => p.templateId === null));
+  assert.equal(rows.length, 1, 'Reading must not write or delete templates');
+});
+
+test('preparing twice reuses the same workout and exercise ids', async () => {
+  const { service, rows } = personalProgramFixture();
+  const first = await service.preparePersonalWorkout(0);
+  const second = await service.preparePersonalWorkout(0);
+  assert.equal(first.templateId, second.templateId);
+  assert.deepEqual(first.exercises, second.exercises);
+  assert.equal(first.exercises.find(e => e.name === 'EMOM pompes').durationSeconds, 600);
+  assert.equal(rows.length, 1);
+  await assert.rejects(service.preparePersonalWorkout(-1), /introuvable/);
+  await assert.rejects(service.preparePersonalWorkout(4), /introuvable/);
+});
+
+test('existing imports are reused and edits retain exercise identity and old templates', async () => {
+  const exerciseId = randomUUID();
+  const templateId = randomUUID();
+  const oldId = randomUUID();
+  const { service, rows } = personalProgramFixture([
+    { id: oldId, name: 'Ancien contrat', templateExercises: [{ id: randomUUID(), name: 'Old lift', weight: 99 }] },
+    { id: templateId, name: referenceProgram[0].name, templateExercises: [{ id: exerciseId, name: 'DC haltères', weight: 34 }] },
+  ]);
+  const prepared = await service.preparePersonalWorkout(0);
+  assert.equal(prepared.templateId, templateId);
+  assert.equal(prepared.exercises[0].weight, 34, 'Do not overwrite a personalised programme');
+  const updated = await service.preparePersonalWorkout(0, {
+    exercises: [{ id: exerciseId, name: 'DC haltères', weight: 36, sets: 3, reps: 8 }],
+  });
+  assert.equal(updated.exercises[0].id, exerciseId);
+  assert.equal((await service.getPersonalProgram())[0].exercises[0].weight, 36);
+  assert.equal(rows.length, 2);
+  assert.equal(rows.find(t => t.id === oldId).templateExercises[0].weight, 99);
+});
+
+test('programme edits validate nested exercises and reject empty programmes', async () => {
+  for (const body of [
+    { exercises: [] },
+    { exercises: [{ name: 'Lift', weight: -10 }] },
+    { exercises: [{ name: '', reps: 0 }] },
+    { exercises: [{ id: 'invalid', name: 'Lift' }] },
+  ]) {
+    assert((await validate(plainToInstance(UpdatePersonalProgramDto, body))).length > 0);
+  }
+  assert.deepEqual(await validate(plainToInstance(UpdatePersonalProgramDto, {
+    exercises: [{ name: 'Lift', weight: 37.5, sets: 3, reps: 8 }],
+  })), []);
+});
+
+test('old imported finishers gain a duration without overriding an explicit choice', async () => {
+  const { service } = personalProgramFixture([{
+    id: randomUUID(), name: referenceProgram[0].name, templateExercises: [
+      { id: randomUUID(), name: 'EMOM pompes', notes: 'Finisher' },
+    ],
+  }]);
+  const plan = (await service.getPersonalProgram())[0];
+  assert.equal(plan.exercises[0].durationSeconds, 600);
+  const updated = await service.preparePersonalWorkout(0, {
+    exercises: [{ ...plan.exercises[0], durationSeconds: null }],
+  });
+  assert.equal(updated.exercises[0].durationSeconds, null);
+  assert.equal((await service.getPersonalProgram())[0].exercises[0].durationSeconds, null);
 });
 
 test('strength progress uses actual performed sets, not planned summary weights', async () => {

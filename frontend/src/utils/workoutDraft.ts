@@ -24,6 +24,8 @@ export interface WorkoutDraftExercise {
   notes?: string | null;
   templateExerciseId?: string;
   performedSets: SetEntry[];
+  trackingSets?: { reps: string; weight: string; done: boolean }[];
+  effortDone?: boolean;
 }
 
 export interface WorkoutDraft {
@@ -35,6 +37,8 @@ export interface WorkoutDraft {
   notes: string;
   exercises: WorkoutDraftExercise[];
   savedAt: string;
+  startedAt?: string;
+  activeExerciseId?: string;
 }
 
 function isDraft(value: unknown): value is WorkoutDraft {
@@ -49,8 +53,13 @@ function isDraft(value: unknown): value is WorkoutDraft {
     Array.isArray(draft.exercises) &&
     draft.exercises.every(ex => Boolean(ex) && typeof ex._id === 'string' &&
       typeof ex.name === 'string' && Array.isArray(ex.performedSets) &&
+      (ex.trackingSets === undefined || Array.isArray(ex.trackingSets) && ex.trackingSets.every(row =>
+        Boolean(row) && typeof row.reps === 'string' && typeof row.weight === 'string' && typeof row.done === 'boolean')) &&
+      (ex.effortDone === undefined || typeof ex.effortDone === 'boolean') &&
       ex.performedSets.every(set => Boolean(set) && Number.isInteger(set.reps) &&
         (set.weight === undefined || Number.isFinite(set.weight)))) &&
+    (draft.startedAt === undefined || typeof draft.startedAt === 'string' && !Number.isNaN(Date.parse(draft.startedAt))) &&
+    (draft.activeExerciseId === undefined || typeof draft.activeExerciseId === 'string') &&
     typeof draft.savedAt === 'string' && !Number.isNaN(Date.parse(draft.savedAt));
 }
 

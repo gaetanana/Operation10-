@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
 import { getLocalDateString } from '../utils/date';
-import ProgramImport from '../components/ProgramImport';
 import SetTracker, { SetEntry, validSets } from '../components/SetTracker';
 
 const today = getLocalDateString();
@@ -771,7 +770,6 @@ export default function SportPage() {
 
   return (
     <div className="page sport-page">
-      <ProgramImport />
       <div className="page-header">
         <div>
           <h1 className="page-title">Sport</h1>

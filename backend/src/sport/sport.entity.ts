@@ -53,6 +53,7 @@ export class SessionTemplate {
     reps?: number;
     weight?: number;
     restSeconds?: number;
+    durationSeconds?: number | null;
     distanceKm?: number;
     avgSpeedKmh?: number;
     notes?: string;

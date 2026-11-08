@@ -3,6 +3,7 @@ export interface ReferenceExercise {
   weight?: number;
   sets?: number;
   reps?: number;
+  durationSeconds?: number;
   notes?: string;
 }
 export interface ProgramTemplate {
@@ -24,7 +25,7 @@ export const referenceProgram: ProgramTemplate[] = [
       { name: 'Dips assis machine', weight: 150 },
       { name: 'Extension triceps poulie barre', weight: 30 },
       { name: 'Extension triceps haltère', weight: 12, notes: 'Unité de charge à préciser (par haltère ou total).' },
-      { name: 'EMOM pompes', notes: 'Finisher : 10 minutes × 15. Ne compte pas comme une séance supplémentaire.' },
+      { name: 'EMOM pompes', durationSeconds: 600, notes: '15 pompes chaque minute pendant 10 minutes.' },
       { name: 'Abdos bloc A', notes: 'Contenu à préciser.' },
     ],
   },
@@ -38,7 +39,7 @@ export const referenceProgram: ProgramTemplate[] = [
       { name: 'Curl poulie', weight: 35 },
       { name: 'Curl marteau', weight: 18, notes: 'Unité de charge à préciser (par haltère ou total).' },
       { name: 'Curl pupitre', weight: 12 },
-      { name: 'EMOM tractions', notes: 'Finisher : 10 minutes × 6. Ne compte pas comme une séance supplémentaire.' },
+      { name: 'EMOM tractions', durationSeconds: 600, notes: '6 tractions chaque minute pendant 10 minutes.' },
     ],
   },
   {

@@ -1,16 +1,16 @@
 # Operation10
 
-Application personnelle de suivi des tâches, du sport et de la nutrition.
+Application personnelle de suivi des entraînements et de la nutrition.
 
-L'accueil « Aujourd'hui » donne accès à la préparation de séance, au carnet sportif et aux repas. La navigation mobile regroupe Aujourd'hui, Sport et Nutrition ; le menu Plus conserve les tâches, la progression et la déconnexion. Révisions n'est plus exposé dans l'interface : ses routes frontend redirigent vers l'accueil, mais le backend et les données existantes sont conservés.
+L'accueil est l'espace Entraînement : quatre séances, un accès direct à la séance en cours et un historique. La navigation propose Entraînement, Nutrition et Progression, avec une barre inférieure sur mobile. Les anciens contrats restent accessibles depuis le menu et l'espace historique, sans encombrer le programme principal. Révisions et les tâches ne sont plus exposées ; leurs données restent conservées.
 
 ## Programme et séries réalisées
 
-Sport propose un aperçu du programme de quatre jours avant import explicite. L'import ajoute des contrats et leurs exercices en une transaction, ne remplace rien et refuse les noms déjà présents. Les charges sont des références : aucune séance passée n'est créée. Les répétitions ou unités de charge non précisées restent signalées dans les notes.
+Le programme de quatre jours est affiché directement : aucun import n'est demandé. `GET /sport/program` lit les quatre séances en réutilisant les modèles déjà importés portant les mêmes noms. `POST /sport/program/:key/prepare` crée uniquement le modèle manquant, dans une transaction sérialisée avec les anciens imports. Répéter cette préparation ne crée pas de doublon. `PATCH /sport/program/:key` permet de modifier les exercices et charges tout en préservant les identifiants des exercices existants. Aucun ancien contrat ni historique n'est supprimé.
 
-La préparation de séance permet de saisir les répétitions et la charge de chaque série réellement effectuée. Une seule requête enregistre la séance et ses exercices de manière atomique. Sans séries réalisées, un exercice de musculation n'est pas enregistré ; les efforts cardio renseignés restent compatibles. Les anciennes séances conservent leur format. Les nouvelles séries sont affichées dans le carnet et éditables ; la charge maximale réalisée alimente les statistiques existantes. Le rappel de dernière performance utilise l'identifiant de l'exercice du contrat, pas son nom.
+Une séance s'ouvre avec les charges de référence, mais aucune série n'est considérée comme réalisée avant sa validation explicite. La saisie se fait exercice par exercice, avec rappel de dernière performance, minuteur de récupération et bilan avant enregistrement. Les finishers chronométrés ont leur propre validation. Une seule requête enregistre la séance et les efforts validés ; les séries non cochées et exercices non réalisés ne sont pas envoyés. Les anciennes séances conservent leur format et restent visibles dans l'historique. La charge maximale réalisée alimente les statistiques existantes. Le rappel de dernière performance utilise l'identifiant de l'exercice, ou son nom pour les anciennes séances sans identifiant.
 
-Les saisies sont conservées à l'écran en cas d'erreur, mais ne sont pas encore persistées après fermeture ou rechargement de la page.
+Les saisies, y compris les séries encore non validées, sont sauvegardées dans le stockage local de cet appareil et reprises après rechargement. Une erreur de stockage est affichée explicitement. Les brouillons ne sont pas synchronisés entre appareils et sont supprimés à la déconnexion.
 Le programme de référence est fourni par une route API authentifiée, et non inclus dans les fichiers JavaScript publics.
 
 Les tests `npm run test:sport` valident les séries imbriquées. Pour inclure les tests PostgreSQL, fournir `SPORT_TEST_DATABASE_URL` vers une base locale dédiée et vide nommée `operation10_sport_test`. Ces tests appliquent les migrations et vérifient les annulations transactionnelles ; ils ne doivent pas cibler les données de l'application.

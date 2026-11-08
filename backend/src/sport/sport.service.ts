@@ -2,8 +2,9 @@ import { Injectable, NotFoundException, ConflictException } from '@nestjs/common
 import { randomUUID } from 'node:crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Session, SessionTemplate, Exercise } from './sport.entity';
-import { CreateSessionDto, ImportProgramDto } from './sport.dto';
+import { Session, SessionTemplate, Exercise, SessionType } from './sport.entity';
+import { CreateSessionDto, ImportProgramDto, UpdatePersonalProgramDto } from './sport.dto';
+import { ProgramTemplate, referenceProgram } from './sport.reference';
 
 function withSetSummary(data: Partial<Exercise>): Partial<Exercise> {
   if (!data.performedSets) return data;
@@ -16,6 +17,17 @@ function withSetSummary(data: Partial<Exercise>): Partial<Exercise> {
   };
 }
 
+function personalExercises(reference: ProgramTemplate, saved?: SessionTemplate) {
+  if (!saved) return reference.exercises;
+  return (saved.templateExercises ?? []).map(ex => ({
+    ...ex,
+    // Older imports predate timed finishers; an explicit null keeps a user override.
+    durationSeconds: ex.durationSeconds === undefined
+      ? reference.exercises.find(r => r.name === ex.name)?.durationSeconds
+      : ex.durationSeconds,
+  }));
+}
+
 @Injectable()
 export class SportService {
   constructor(
@@ -23,6 +35,44 @@ export class SportService {
     @InjectRepository(SessionTemplate) private templateRepo: Repository<SessionTemplate>,
     @InjectRepository(Exercise)        private exerciseRepo: Repository<Exercise>,
   ) {}
+
+  async getPersonalProgram() {
+    const templates = await this.findAllTemplates();
+    return referenceProgram.map((reference, key) => {
+      const saved = templates.find(t => t.name.trim().toLocaleLowerCase() === reference.name.toLocaleLowerCase());
+      return {
+        ...reference, key, templateId: saved?.id ?? null,
+        exercises: personalExercises(reference, saved),
+      };
+    });
+  }
+
+  async preparePersonalWorkout(key: number, update?: UpdatePersonalProgramDto) {
+    const reference = referenceProgram[key];
+    if (!reference) throw new NotFoundException('Séance du programme introuvable.');
+    return this.templateRepo.manager.transaction(async manager => {
+      await manager.query("SELECT pg_advisory_xact_lock(hashtext('operation10-program-import'))");
+      const repo = manager.getRepository(SessionTemplate);
+      const templates = await repo.find();
+      let saved = templates.find(t => t.name.trim().toLocaleLowerCase() === reference.name.toLocaleLowerCase());
+      if (!saved) {
+        saved = repo.create({
+          name: reference.name, type: reference.type as SessionType,
+          dayOfWeek: reference.dayOfWeek, weeklyTarget: 1,
+          description: reference.description,
+          templateExercises: reference.exercises.map(e => ({ ...e, id: randomUUID() })),
+        });
+      }
+      if (update) {
+        const existingIds = new Set((saved.templateExercises ?? []).map(e => e.id));
+        saved.templateExercises = update.exercises.map(({ id, performedSets, templateExerciseId, ...exercise }) => ({
+          ...exercise, id: id && existingIds.has(id) ? id : randomUUID(),
+        }));
+      }
+      saved = await repo.save(saved);
+      return { ...reference, key, templateId: saved.id, exercises: personalExercises(reference, saved) };
+    });
+  }
 
   // ─── Contrat hebdo ───────────────────────────────────────────────────────────
 

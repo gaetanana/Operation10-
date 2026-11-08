@@ -3,8 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
-import DashboardPage from './pages/DashboardPage';
-import SeanceDuJourPage from './pages/SeanceDuJourPage';
+import TrainingPage from './pages/TrainingPage';
+import WorkoutPage from './pages/WorkoutPage';
 import LoginPage from './pages/LoginPage';
 import SportPage from './pages/SportPage';
 import NutritionPage from './pages/NutritionPage';
@@ -68,10 +68,11 @@ export default function App() {
       <main className="app-main" id="main-content" tabIndex={-1}>
         {logout.isError && <div role="alert" className="feedback-error">La déconnexion a échoué. Réessaie depuis le menu.</div>}
         <Routes>
-          <Route path="/" element={<DashboardPage />} />
+          <Route path="/" element={<TrainingPage />} />
           <Route path="/todo" element={<Navigate to="/" replace />} />
-          <Route path="/seance" element={<SeanceDuJourPage />} />
-          <Route path="/sport" element={<SportPage />} />
+          <Route path="/seance" element={<WorkoutPage />} />
+          <Route path="/sport" element={<Navigate to="/" replace />} />
+          <Route path="/archives" element={<SportPage />} />
           <Route path="/nutrition" element={<NutritionPage />} />
           <Route path="/revision/*" element={<Navigate to="/" replace />} />
           <Route path="/stats" element={<StatsPage />} />

@@ -134,6 +134,21 @@ export class ExerciseDto {
 
 export class UpdateExerciseDto extends ExerciseDto {}
 
+export class ProgramExerciseDto extends ExerciseDto {
+  @IsOptional()
+  @IsUUID()
+  id?: string;
+}
+
+export class UpdatePersonalProgramDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(30)
+  @ValidateNested({ each: true })
+  @Type(() => ProgramExerciseDto)
+  exercises: ProgramExerciseDto[];
+}
+
 export class ImportTemplateDto extends CreateTemplateDto {
   @IsArray()
   @ArrayMaxSize(30)
