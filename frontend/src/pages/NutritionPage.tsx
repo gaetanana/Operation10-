@@ -28,10 +28,10 @@ function formatDateLabel(dateStr: string): string {
 }
 
 const MEAL_TYPES = [
-  { value: 'breakfast', label: 'Petit-déjeuner', icon: 'ti-coffee',    color: '#ffcc40' },
-  { value: 'lunch',     label: 'Déjeuner',       icon: 'ti-sun',       color: '#40c0ff' },
-  { value: 'dinner',    label: 'Dîner',           icon: 'ti-moon',      color: '#c040ff' },
-  { value: 'snack',     label: 'Collation',       icon: 'ti-apple',     color: '#a0ff40' },
+  { value: 'breakfast', label: 'Petit-déjeuner', icon: 'ti-coffee', color: '#bd5b37' },
+  { value: 'lunch',     label: 'Déjeuner',       icon: 'ti-sun',    color: '#287b91' },
+  { value: 'dinner',    label: 'Dîner',          icon: 'ti-moon',   color: '#7453a6' },
+  { value: 'snack',     label: 'Collation',      icon: 'ti-apple',  color: '#9a6b1c' },
 ];
 
 function getMealTypeConfig(value: string) {
@@ -459,7 +459,7 @@ export default function NutritionPage() {
 
       {/* ── Shaker protéines rapide ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px', marginBottom: 12 }}>
-        <i className="ti ti-bottle" style={{ fontSize: 20, color: '#a0ff40', flexShrink: 0 }} />
+        <i className="ti ti-bottle" style={{ fontSize: 20, color: '#287b91', flexShrink: 0 }} />
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)' }}>Shaker — estimation générique</div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>

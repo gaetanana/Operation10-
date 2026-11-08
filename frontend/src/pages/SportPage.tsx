@@ -770,7 +770,7 @@ export default function SportPage() {
   const thisWeekCount = (sessions as any[]).filter((s: any) => isSameWeek(s.date, getMondayOf(new Date()))).length;
 
   return (
-    <div className="page" style={{ maxWidth: '100%' }}>
+    <div className="page sport-page">
       <ProgramImport />
       <div className="page-header">
         <div>
@@ -872,8 +872,8 @@ export default function SportPage() {
       )}
 
       {/* Layout : contrats à gauche, semaine à droite */}
-      <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
-        <div style={{ width: 320, flexShrink: 0 }}>
+      <div className="sport-layout">
+        <div className="sport-contracts">
           <p className="section-head">Contrats hebdo</p>
           {templates.length === 0 && <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>Aucun contrat. Crée-en un pour fixer tes objectifs.</p>}
           {templates.map((t: any) => (

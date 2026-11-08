@@ -3,15 +3,15 @@ import { useQuery } from '@tanstack/react-query';
 import api from '../services/api';
 
 const TYPE_LABELS: Record<string, { label: string; color: string }> = {
-  pecs_triceps: { label: 'Pecs / Triceps', color: '#d070ff' },
-  dos_biceps:   { label: 'Dos / Biceps',   color: '#40c0ff' },
-  epaules:      { label: 'Épaules',          color: '#ffcc40' },
-  jambes:       { label: 'Jambes',           color: '#40ffaa' },
-  bras_abdos:   { label: 'Bras / Abdos',    color: '#ff9040' },
-  cardio:       { label: 'Cardio',           color: '#40c0ff' },
-  emom:         { label: 'EMOM',             color: '#ff9040' },
-  circuit:      { label: 'Circuit',          color: '#ff40cc' },
-  other:        { label: 'Autre',            color: '#4a6080' },
+  pecs_triceps: { label: 'Pecs / Triceps', color: '#7453a6' },
+  dos_biceps:   { label: 'Dos / Biceps',   color: '#287b91' },
+  epaules:      { label: 'Épaules',        color: '#9a6b1c' },
+  jambes:       { label: 'Jambes',         color: '#4055c7' },
+  bras_abdos:   { label: 'Bras / Abdos',   color: '#bd5b37' },
+  cardio:       { label: 'Cardio',         color: '#287b91' },
+  emom:         { label: 'EMOM',           color: '#bd5b37' },
+  circuit:      { label: 'Circuit',        color: '#a34777' },
+  other:        { label: 'Autre',          color: '#65718a' },
 };
 
 const MONTH_NAMES = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
