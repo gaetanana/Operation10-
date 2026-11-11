@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsEnum, IsDateString, IsArray, ValidateNested, Min, Max, MinLength, IsInt, IsUUID, ArrayMaxSize, ArrayMinSize } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsEnum, IsDateString, IsArray, ValidateNested, Min, Max, MinLength, IsInt, IsUUID, ArrayMaxSize, ArrayMinSize, Matches } from 'class-validator';
 import { Type } from 'class-transformer';
 import { SessionType } from './sport.entity';
 
@@ -198,6 +198,19 @@ export class CreateSessionDto {
   @ValidateNested({ each: true })
   @Type(() => ExerciseDto)
   exercises?: ExerciseDto[];
+}
+
+export class ImportWorkoutHistoryDto {
+  @IsString()
+  @Matches(/^[a-f0-9]{64}$/)
+  sourceHash: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(50)
+  @ValidateNested({ each: true })
+  @Type(() => CreateSessionDto)
+  sessions: CreateSessionDto[];
 }
 
 export class UpdateSessionDto {

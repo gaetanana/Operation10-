@@ -38,6 +38,44 @@ function getMealTypeConfig(value: string) {
   return MEAL_TYPES.find(m => m.value === value) ?? MEAL_TYPES[1];
 }
 
+const MAX_ANALYSIS_IMAGE_BYTES = 2_800_000;
+
+async function prepareAnalysisImage(file: File): Promise<{ blob: Blob; mediaType: string }> {
+  if (file.size <= MAX_ANALYSIS_IMAGE_BYTES) {
+    return { blob: file, mediaType: file.type || 'image/jpeg' };
+  }
+
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    throw new Error('Cette photo est trop volumineuse et ne peut pas être redimensionnée. Choisis une image plus légère.');
+  }
+
+  try {
+    let scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Impossible de préparer cette photo pour l’analyse.');
+      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+
+      const blob = await new Promise<Blob | null>(resolve =>
+        canvas.toBlob(resolve, 'image/jpeg', Math.max(0.45, 0.82 - attempt * 0.08)),
+      );
+      if (!blob) throw new Error('Impossible de préparer cette photo pour l’analyse.');
+      if (blob.size <= MAX_ANALYSIS_IMAGE_BYTES) return { blob, mediaType: 'image/jpeg' };
+      scale *= 0.75;
+    }
+  } finally {
+    bitmap.close();
+  }
+
+  throw new Error('Cette photo reste trop volumineuse après compression. Choisis une image plus légère.');
+}
+
 function groupMealsByType(meals: any[]) {
   const map = new Map<string, any[]>();
   for (const m of MEAL_TYPES) map.set(m.value, []);
@@ -248,21 +286,24 @@ export default function NutritionPage() {
     setPortionNote('');
 
     try {
-      // Convertir en base64
+      const { blob, mediaType } = await prepareAnalysisImage(file);
       const base64 = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => {
-          const result = reader.result as string;
+          const result = typeof reader.result === 'string' ? reader.result : '';
+          if (!result.includes(',')) {
+            reject(new Error('Lecture de la photo impossible.'));
+            return;
+          }
           resolve(result.split(',')[1]); // Retirer le préfixe data:image/...;base64,
         };
         reader.onerror = () => reject(new Error('Lecture de la photo impossible.'));
-        reader.readAsDataURL(file);
+        reader.readAsDataURL(blob);
       });
 
       // Prévisualisation
       setPreviewImg(URL.createObjectURL(file));
 
-      const mediaType = file.type || 'image/jpeg';
       const res = await api.post('/nutrition/analyze-image', { base64, mediaType });
       const data = res.data;
 
@@ -282,8 +323,10 @@ export default function NutritionPage() {
         setShowManual(true);
         if (data.portionNote) setPortionNote(data.portionNote);
       }
-    } catch {
-      setPhotoError('La photo n’a pas pu être analysée. Réessaie ou renseigne ton repas manuellement.');
+    } catch (error) {
+      setPhotoError(error instanceof Error
+        ? error.message
+        : 'La photo n’a pas pu être analysée. Réessaie ou renseigne ton repas manuellement.');
     } finally {
       setAnalyzing(false);
       if (fileRef.current) fileRef.current.value = '';

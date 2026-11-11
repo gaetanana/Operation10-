@@ -1,5 +1,6 @@
 const { randomBytes, scrypt } = require('node:crypto');
 const { promisify } = require('node:util');
+const { spawnSync } = require('node:child_process');
 
 const deriveKey = promisify(scrypt);
 
@@ -20,7 +21,17 @@ async function main() {
     p: 1,
     maxmem: 64 * 1024 * 1024,
   });
-  console.log(`APP_PASSWORD_HASH=scrypt$32768$8$1$${salt.toString('base64url')}$${key.toString('base64url')}`);
+  const hash = `scrypt$32768$8$1$${salt.toString('base64url')}$${key.toString('base64url')}`;
+  if (process.argv.includes('--vercel')) {
+    const result = spawnSync(
+      'npx --yes vercel@latest env add APP_PASSWORD_HASH --environment production --sensitive --yes',
+      { input: hash, shell: true, stdio: ['pipe', 'inherit', 'inherit'] },
+    );
+    if (result.error) throw result.error;
+    if (result.status !== 0) throw new Error('Configuration du mot de passe Vercel échouée.');
+    return;
+  }
+  console.log(`APP_PASSWORD_HASH=${hash}`);
 }
 
 function readSecret(prompt) {

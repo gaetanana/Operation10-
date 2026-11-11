@@ -41,6 +41,7 @@ export interface LoggedWorkout {
   name: string;
   type: string;
   templateId: string | null;
+  sourceImport?: string | null;
   date: string;
   durationMinutes: number | null;
   notes?: string;
@@ -74,7 +75,7 @@ export function weekWorkouts(workouts: LoggedWorkout[], today = getLocalDateStri
 }
 
 export function planCompleted(plan: WorkoutPlan, workouts: LoggedWorkout[]) {
-  return workouts.some(w => plan.templateId ? w.templateId === plan.templateId : w.name === plan.name);
+  return workouts.some(w => !w.sourceImport && (plan.templateId ? w.templateId === plan.templateId : w.type === plan.type));
 }
 
 export function workoutFromPlan(plan: WorkoutPlan): WorkoutDraft {

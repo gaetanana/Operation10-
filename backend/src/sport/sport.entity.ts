@@ -1,6 +1,6 @@
 import {
   Entity, PrimaryGeneratedColumn, Column, CreateDateColumn,
-  OneToMany, ManyToOne, JoinColumn,
+  OneToMany, ManyToOne, JoinColumn, Index,
 } from 'typeorm';
 
 export enum SessionType {
@@ -62,6 +62,10 @@ export class SessionTemplate {
 
 // Séance réellement réalisée — déclarée AVANT Exercise pour éviter la ref circulaire
 @Entity('sessions')
+@Index('UQ_sessions_source_import_index', ['sourceImport', 'sourceIndex'], {
+  unique: true,
+  where: '"sourceImport" IS NOT NULL',
+})
 export class Session {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -83,6 +87,12 @@ export class Session {
 
   @Column({ nullable: true })
   notes: string;
+
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  sourceImport: string | null;
+
+  @Column({ type: 'int', nullable: true })
+  sourceIndex: number | null;
 
   @OneToMany(() => Exercise, (e) => e.session, { cascade: true, eager: true })
   exercises: Exercise[];

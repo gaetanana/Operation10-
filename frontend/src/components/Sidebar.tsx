@@ -39,6 +39,7 @@ export default function Sidebar({ onLogout, loggingOut }: {
           {open && (
             <div className="more-panel" id="more-navigation">
               <NavLink to="/?view=history"><i className="ti ti-history" aria-hidden="true" /> Historique</NavLink>
+              <NavLink to="/import-history"><i className="ti ti-file-import" aria-hidden="true" /> Importer des séances</NavLink>
               <NavLink to="/archives"><i className="ti ti-archive" aria-hidden="true" /> Anciens contrats</NavLink>
               <button onClick={onLogout} disabled={loggingOut}><i className="ti ti-logout" aria-hidden="true" />{loggingOut ? 'Déconnexion…' : 'Se déconnecter'}</button>
             </div>

@@ -31,20 +31,21 @@ Les tests `npm run test:sport` valident les séries imbriquées. Pour inclure le
 5. Dans un second terminal, lancer `npm install` puis `npm run dev` dans `frontend`.
 6. Ouvrir <http://localhost:5173>.
 
-En développement, TypeORM synchronise le schéma automatiquement. En production, une migration versionnée crée les tables au premier déploiement.
-Les migrations suivantes sont appliquées automatiquement avant le démarrage, y compris sur une base déjà initialisée. La migration des contrats hebdomadaires ajoute `weeklyTarget` avec une valeur par défaut de 1 sans supprimer les contrats existants.
+En développement, TypeORM synchronise le schéma automatiquement. En production, `RUN_MIGRATIONS=true` autorise l'application des migrations au démarrage ; par défaut, elles restent désactivées. `RUN_STARTUP_SEEDS=true` autorise de même les seeds de démarrage en production. Ne les activer qu'après avoir vérifié la cible et sauvegardé la base.
 
 ## Déploiement personnel gratuit
 
-Le dépôt contient un `render.yaml` et un Dockerfile multi-étapes : l'interface et l'API sont servies par **un seul service Render**, sur la même origine. Cela évite de partager les cookies de session entre domaines. Render Free peut mettre le service en veille après une période d'inactivité ; le premier chargement suivant peut donc prendre un moment. Les quotas et conditions des offres gratuites peuvent changer.
+La configuration racine `vercel.json` réunit le frontend Vite et l’API NestJS dans **un seul projet Vercel** : l’API reste sous `/api` et partage la même origine que le cookie de session. Le backend s’exécute à la demande, sans serveur Render à maintenir éveillé. Les limites gratuites des fournisseurs peuvent évoluer.
 
-1. Créer une base PostgreSQL gratuite sur [Neon](https://neon.tech/), de préférence dans la même région que le service Render. Copier son URL de connexion avec SSL.
-2. Créer un compte Render et importer ce dépôt via le Blueprint `render.yaml`.
-3. Dans les variables secrètes du service Render, renseigner `DATABASE_URL` (URL Neon) et `APP_PASSWORD_HASH` (généré ci-dessus). `APP_ORIGIN` doit correspondre exactement à l'URL HTTPS publique du service.
-4. Laisser le premier déploiement terminer : la migration initialise les tables et les tâches/programmes par défaut.
-5. Vérifier `/api/auth/health`, puis se connecter à l'URL Render avec le mot de passe propriétaire. Il n'y a ni inscription publique ni compte préconfiguré.
+Pour préparer le projet, sélectionner le dépôt à la racine (ne pas choisir `frontend/` ou `backend/` comme Root Directory). Les commandes d’installation/build, la sortie `frontend/dist`, les fonctions API et la région Paris (`cdg1`) sont déclarées dans `vercel.json`.
 
-L'API d'analyse de repas par photo nécessite une clé Anthropic et entraîne une facturation à l'usage ; cette fonction est facultative. Sans clé, les autres fonctions restent disponibles.
+Le fonctionnement nécessite `NODE_ENV=production`, `APP_ORIGIN` (origine HTTPS exacte du projet) et les variables backend `DATABASE_URL` et `APP_PASSWORD_HASH`. **Ne pas connecter ni déployer sur une base contenant des données tant que les migrations et leur cible n'ont pas été explicitement vérifiées et autorisées.** En production, migrations et seeds sont désactivés par défaut ; `RUN_MIGRATIONS=true` et `RUN_STARTUP_SEEDS=true` sont des opt-ins explicites, à ne pas activer sans autorisation. `ANTHROPIC_API_KEY` est facultative pour l’analyse de repas par photo.
+
+Le projet `operation10` est déployé sur <https://operation10.vercel.app>, avec une base Supabase distincte. Aucun transfert depuis Neon n'est nécessaire. La connexion PostgreSQL utilise un compte dédié et `DATABASE_CA_CERT` pour vérifier le certificat TLS. Les tables applicatives ont RLS activé et les rôles publics `anon`/`authenticated` n'y ont pas accès ; seul le backend authentifié accède aux données.
+
+Pour configurer le mot de passe du portail depuis un terminal interactif à la racine du dépôt, exécuter `node backend/scripts/hash-password.js --vercel`. Le mot de passe reste masqué et seul son hash est envoyé à la variable secrète Vercel. Redéployer après un changement de variable.
+
+Les fonctions Vercel limitent les requêtes à 4,5 Mo. L’analyse photo compresse automatiquement les images trop volumineuses avant envoi. Elle nécessite `ANTHROPIC_API_KEY` et peut entraîner une facturation ; sans cette clé, les autres fonctions restent disponibles.
 
 ## Sécurité et données
 

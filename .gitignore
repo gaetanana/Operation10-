@@ -1,3 +1,8 @@
 .env
+.env.migration
+supabase/.temp/
+.deployment-secrets/
 node_modules/
 frontend/dist/
+.vercel
+.env*

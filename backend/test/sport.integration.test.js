@@ -6,12 +6,13 @@ const { plainToInstance } = require('class-transformer');
 const { validate } = require('class-validator');
 const { Session, SessionTemplate, Exercise, SessionType } = require('../dist/sport/sport.entity');
 const { SportService } = require('../dist/sport/sport.service');
-const { CreateSessionDto, UpdatePersonalProgramDto } = require('../dist/sport/sport.dto');
+const { CreateSessionDto, ImportWorkoutHistoryDto, UpdatePersonalProgramDto } = require('../dist/sport/sport.dto');
 const { referenceProgram } = require('../dist/sport/sport.reference');
 const { randomUUID } = require('node:crypto');
 const { InitialSchema1762369200000 } = require('../dist/migrations/1762369200000-InitialSchema');
 const { SessionTemplateWeeklyTarget1794043200000 } = require('../dist/migrations/1794043200000-SessionTemplateWeeklyTarget');
 const { PerformedSets1794056400000 } = require('../dist/migrations/1794056400000-PerformedSets');
+const { WorkoutHistoryImport1794150000000 } = require('../dist/migrations/1794150000000-WorkoutHistoryImport');
 
 test('nested performed sets reject invalid repetitions', async () => {
   const dto = plainToInstance(CreateSessionDto, {
@@ -19,6 +20,21 @@ test('nested performed sets reject invalid repetitions', async () => {
     exercises: [{ name: 'Test exercise', performedSets: [{ reps: -1, weight: 10 }] }],
   });
   assert((await validate(dto)).length > 0);
+});
+
+test('history import validates its source hash and nested workout data', async () => {
+  const valid = {
+    sourceHash: 'a'.repeat(64),
+    sessions: [{
+      name: 'Course', type: SessionType.CARDIO, date: '2026-11-08',
+      exercises: [{ name: 'Course à pied', performedSets: [{ reps: 1 }] }],
+    }],
+  };
+  assert.deepEqual(await validate(plainToInstance(ImportWorkoutHistoryDto, valid)), []);
+  assert((await validate(plainToInstance(ImportWorkoutHistoryDto, {
+    ...valid, sessions: [{ ...valid.sessions[0], exercises: [{ name: 'Course', performedSets: [{ reps: 0 }] }] }],
+  }))).length > 0);
+  assert((await validate(plainToInstance(ImportWorkoutHistoryDto, { ...valid, sourceHash: 'bad' }))).length > 0);
 });
 
 function personalProgramFixture(initial = []) {
@@ -163,6 +179,7 @@ test('PostgreSQL migrations preserve old rows; imports and sessions are atomic',
     await ds.destroy();
     ds = new DataSource({ ...options, migrations: [
       InitialSchema1762369200000, SessionTemplateWeeklyTarget1794043200000, PerformedSets1794056400000,
+      WorkoutHistoryImport1794150000000,
     ] });
     await ds.initialize();
     await ds.runMigrations();
@@ -220,6 +237,18 @@ test('PostgreSQL migrations preserve old rows; imports and sessions are atomic',
     await service.updateExercise(actual.exercises[0].id, { performedSets: [], name: 'Test lift' });
     assert.equal((await exercises.findOneByOrFail({ id: actual.exercises[0].id })).weight, null);
     assert.deepEqual(await service.getStrengthProgress(), [], 'Removing performed sets removes the progress point');
+    const history = {
+      sourceHash: 'a'.repeat(64),
+      sessions: [{
+        name: 'Imported run', type: SessionType.CARDIO, date: '2026-11-08',
+        exercises: [{ name: 'Run', durationSeconds: 2856, distanceKm: 10.01 }],
+      }],
+    };
+    assert.deepEqual(await service.importHistory(history), { imported: 1, duplicate: false });
+    assert.deepEqual(await service.importHistory(history), { imported: 1, duplicate: true });
+    assert.equal(await sessions.count(), 2, 'Replaying a history import must not create duplicates');
+    const imported = await sessions.findOneByOrFail({ sourceImport: history.sourceHash, sourceIndex: 0 });
+    assert.equal(imported.exercises[0].distanceKm, 10.01);
   } finally {
     if (ds.isInitialized) await ds.destroy();
   }

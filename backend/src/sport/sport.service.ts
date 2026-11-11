@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Session, SessionTemplate, Exercise, SessionType } from './sport.entity';
-import { CreateSessionDto, ImportProgramDto, UpdatePersonalProgramDto } from './sport.dto';
+import { CreateSessionDto, ImportProgramDto, UpdatePersonalProgramDto, ImportWorkoutHistoryDto } from './sport.dto';
 import { ProgramTemplate, referenceProgram } from './sport.reference';
 
 function withSetSummary(data: Partial<Exercise>): Partial<Exercise> {
@@ -145,6 +145,29 @@ export class SportService {
       exercises: data.exercises?.map((e, order) =>
         this.exerciseRepo.create({ ...withSetSummary(e), order })),
     }));
+  }
+
+  async importHistory(data: ImportWorkoutHistoryDto): Promise<{ imported: number; duplicate: boolean }> {
+    return this.sessionRepo.manager.transaction(async manager => {
+      await manager.query(
+        'SELECT pg_advisory_xact_lock(hashtext($1))',
+        [`operation10-workout-history:${data.sourceHash}`],
+      );
+      const sessions = manager.getRepository(Session);
+      const existing = await sessions.countBy({ sourceImport: data.sourceHash });
+      if (existing > 0) return { imported: existing, duplicate: true };
+
+      const exercises = manager.getRepository(Exercise);
+      const rows = data.sessions.map((session, sourceIndex) => sessions.create({
+        ...session,
+        sourceImport: data.sourceHash,
+        sourceIndex,
+        exercises: session.exercises?.map((exercise, order) =>
+          exercises.create({ ...withSetSummary(exercise), order })),
+      }));
+      await sessions.save(rows);
+      return { imported: rows.length, duplicate: false };
+    });
   }
 
   async updateSession(id: string, data: Partial<Session>): Promise<Session> {

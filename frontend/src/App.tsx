@@ -9,6 +9,7 @@ import LoginPage from './pages/LoginPage';
 import SportPage from './pages/SportPage';
 import NutritionPage from './pages/NutritionPage';
 import StatsPage from './pages/StatsPage';
+import ImportHistoryPage from './pages/ImportHistoryPage';
 import api from './services/api';
 import { clearWorkoutDraft, hasWorkoutProgress, readWorkoutDraft } from './utils/workoutDraft';
 
@@ -73,6 +74,7 @@ export default function App() {
           <Route path="/seance" element={<WorkoutPage />} />
           <Route path="/sport" element={<Navigate to="/" replace />} />
           <Route path="/archives" element={<SportPage />} />
+          <Route path="/import-history" element={<ImportHistoryPage />} />
           <Route path="/nutrition" element={<NutritionPage />} />
           <Route path="/revision/*" element={<Navigate to="/" replace />} />
           <Route path="/stats" element={<StatsPage />} />

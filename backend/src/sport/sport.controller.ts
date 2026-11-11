@@ -2,7 +2,7 @@ import { Controller, Get, Post, Patch, Delete, Param, Body, Query, ParseIntPipe 
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { SportService } from './sport.service';
 import { referenceProgram } from './sport.reference';
-import { CreateTemplateDto, UpdateTemplateDto, CreateSessionDto, UpdateSessionDto, ExerciseDto, UpdateExerciseDto, ImportProgramDto, UpdatePersonalProgramDto } from './sport.dto';
+import { CreateTemplateDto, UpdateTemplateDto, CreateSessionDto, UpdateSessionDto, ExerciseDto, UpdateExerciseDto, ImportProgramDto, UpdatePersonalProgramDto, ImportWorkoutHistoryDto } from './sport.dto';
 
 @ApiTags('Sport')
 @Controller('sport')
@@ -56,6 +56,9 @@ export class SportController {
 
   @Post('sessions')
   createSession(@Body() body: CreateSessionDto) { return this.service.createSession(body); }
+
+  @Post('sessions/import')
+  importSessions(@Body() body: ImportWorkoutHistoryDto) { return this.service.importHistory(body); }
 
   @Patch('sessions/:id')
   updateSession(@Param('id') id: string, @Body() body: UpdateSessionDto) {
