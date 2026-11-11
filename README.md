@@ -52,5 +52,5 @@ Les fonctions Vercel limitent les requêtes à 4,5 Mo. L’analyse photo compres
 - Toutes les routes API de données exigent une session propriétaire. Le cookie est `HttpOnly`, `SameSite=Strict`, sécurisé en HTTPS et expirant après sept jours ; le serveur ne stocke qu'un hash du jeton de session.
 - Le mot de passe est dérivé avec scrypt et le login est limité en débit. Changer `APP_PASSWORD_HASH` puis supprimer la table `auth_sessions` révoque toutes les sessions.
 - Garder les mots de passe et URLs de base en variables d'environnement, jamais dans Git. `.env` est ignoré par Git.
-- Neon Free n'est pas une sauvegarde : exporter régulièrement les données PostgreSQL et vérifier les limites/règles de rétention en vigueur chez le fournisseur.
+- Exporter régulièrement les données PostgreSQL de Supabase et vérifier les limites/règles de rétention en vigueur chez le fournisseur.
 - L'application stocke des données de santé personnelle (sport et alimentation). Utiliser un mot de passe unique, ne pas partager le lien, et ne téléverser que des photos que l'on accepte de transmettre à l'API Anthropic.
