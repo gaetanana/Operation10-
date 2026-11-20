@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Patch, Delete, Param, Body, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { NutritionService } from './nutrition.service';
-import { CreateMealDto, UpdateMealDto, AnalyzeImageDto, CreateFavoriteDto, DuplicateDayDto } from './nutrition.dto';
+import { CreateMealDto, CreateMealsDto, UpdateMealDto, AnalyzeImageDto, CreateFavoriteDto, DuplicateDayDto, NutritionGoalsDto, RenameFavoriteDto, ShakerPortionDto, ConfirmShakerDto, CreatineEntryDto } from './nutrition.dto';
 
 @ApiTags('Nutrition')
 @Controller('nutrition')
@@ -13,6 +13,34 @@ export class NutritionController {
   findByDate(@Query('date') date: string) {
     return this.service.findByDate(date);
   }
+
+  @Get('range')
+  findRange(@Query('from') from: string, @Query('to') to: string) {
+    return this.service.findRange(from, to);
+  }
+
+  @Get('goals')
+  getGoals() { return this.service.getGoals(); }
+
+  @Patch('goals')
+  updateGoals(@Body() body: NutritionGoalsDto) { return this.service.updateGoals(body); }
+
+  @Get('routine')
+  getRoutine(@Query('date') date: string) { return this.service.getRoutine(date); }
+
+  @Patch('routine/shaker')
+  configureShaker(@Body() body: ShakerPortionDto) { return this.service.configureShaker(body); }
+
+  @Patch('routine/shakers/:slot')
+  confirmShaker(@Param('slot') slot: string, @Body() body: ConfirmShakerDto) {
+    return this.service.confirmShaker(body.date, Number(slot), body.taken);
+  }
+
+  @Patch('routine/creatine')
+  logCreatine(@Body() body: CreatineEntryDto) { return this.service.logCreatine(body.date, body.grams); }
+
+  @Delete('routine/creatine')
+  clearCreatine(@Query('date') date: string) { return this.service.clearCreatine(date); }
 
   @Get('totals')
   @ApiOperation({ summary: 'Macros totaux d\'une journée' })
@@ -29,6 +57,9 @@ export class NutritionController {
   @Post('meals')
   create(@Body() body: CreateMealDto) { return this.service.create(body); }
 
+  @Post('meals/bulk')
+  createMany(@Body() body: CreateMealsDto) { return this.service.createMany(body.meals); }
+
   @Patch('meals/:id')
   update(@Param('id') id: string, @Body() body: UpdateMealDto) { return this.service.update(id, body); }
 
@@ -36,9 +67,9 @@ export class NutritionController {
   remove(@Param('id') id: string) { return this.service.remove(id); }
 
   @Post('analyze-image')
-  @ApiOperation({ summary: 'Analyse une photo de repas ou d\'emballage via Claude Vision' })
+  @ApiOperation({ summary: 'Analyse une photo de repas ou d\'emballage via Groq' })
   analyzeImage(@Body() body: AnalyzeImageDto) {
-    return this.service.analyzeImage(body.base64, body.mediaType || 'image/jpeg');
+    return this.service.analyzeImage(body.base64, body.mediaType || 'image/jpeg', body.note);
   }
 
   // ─── Ajout rapide : favoris, duplication, récents ──────────────────────────────
@@ -47,7 +78,10 @@ export class NutritionController {
   findFavorites() { return this.service.findFavorites(); }
 
   @Post('favorites')
-  createFavorite(@Body() body: CreateFavoriteDto) { return this.service.createFavorite(body as any); }
+  createFavorite(@Body() body: CreateFavoriteDto) { return this.service.createFavorite(body); }
+
+  @Patch('favorites/:id')
+  renameFavorite(@Param('id') id: string, @Body() body: RenameFavoriteDto) { return this.service.renameFavorite(id, body.name); }
 
   @Delete('favorites/:id')
   removeFavorite(@Param('id') id: string) { return this.service.removeFavorite(id); }

@@ -1,4 +1,13 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index } from 'typeorm';
+
+export interface ShakerPortion {
+  name: string;
+  quantityGrams: number;
+  proteins: number;
+  calories: number | null;
+  carbs: number | null;
+  fats: number | null;
+}
 
 export enum MealType {
   BREAKFAST = 'breakfast',
@@ -8,6 +17,7 @@ export enum MealType {
 }
 
 @Entity('meals')
+@Index('UQ_meals_routine_slot', ['date', 'routineSlot'], { unique: true })
 export class Meal {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -18,17 +28,26 @@ export class Meal {
   @Column({ type: 'date' })
   date: string;
 
-  @Column({ type: 'float', default: 0 })
-  calories: number;
+  @Column({ type: 'float', nullable: true })
+  calories: number | null;
 
-  @Column({ type: 'float', default: 0 })
-  proteins: number; // en grammes
+  @Column({ type: 'float', nullable: true })
+  proteins: number | null;
 
-  @Column({ type: 'float', default: 0 })
-  carbs: number;
+  @Column({ type: 'float', nullable: true })
+  carbs: number | null;
 
-  @Column({ type: 'float', default: 0 })
-  fats: number;
+  @Column({ type: 'float', nullable: true })
+  fats: number | null;
+
+  @Column({ type: 'float', nullable: true })
+  quantityGrams: number | null;
+
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  source: string | null;
+
+  @Column({ type: 'smallint', nullable: true })
+  routineSlot: number | null;
 
   @Column({ type: 'enum', enum: MealType, default: MealType.LUNCH })
   mealType: MealType;
@@ -40,14 +59,38 @@ export class Meal {
   items: {
     name: string;
     quantity: string;
-    calories: number;
-    proteins: number;
-    carbs: number;
-    fats: number;
+    calories: number | null;
+    proteins: number | null;
+    carbs: number | null;
+    fats: number | null;
   }[];
 
   @CreateDateColumn()
   createdAt: Date;
+}
+
+@Entity('nutrition_settings')
+export class NutritionSettings {
+  @Column({ type: 'varchar', primary: true, length: 32, default: 'current' })
+  id: string;
+
+  @Column({ type: 'float', nullable: true })
+  caloriesGoal: number | null;
+
+  @Column({ type: 'float', nullable: true })
+  proteinsGoal: number | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  shaker: ShakerPortion | null;
+}
+
+@Entity('nutrition_routine_days')
+export class NutritionRoutineDay {
+  @Column({ type: 'date', primary: true })
+  date: string;
+
+  @Column({ type: 'float', nullable: true })
+  creatineGrams: number | null;
 }
 
 // Repas favori / combo : un ou plusieurs « entrées » réutilisables en 1 clic
@@ -64,10 +107,13 @@ export class MealFavorite {
   entries: {
     name: string;
     mealType: MealType;
-    calories: number;
-    proteins: number;
-    carbs: number;
-    fats: number;
+    calories: number | null;
+    proteins: number | null;
+    carbs: number | null;
+    fats: number | null;
+    quantityGrams?: number | null;
+    source?: string | null;
+    items?: Meal['items'];
   }[];
 
   @CreateDateColumn()

@@ -2,7 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import { AxiosError } from 'axios';
 import api from './api';
 import { getLocalDateString } from '../utils/date';
-import { WorkoutDraft, WorkoutDraftExercise } from '../utils/workoutDraft';
+import { WorkoutDraft, draftExercises } from '../utils/workoutDraft';
+export { weekWorkouts } from '../utils/trainingProgress';
 
 export interface ProgramExercise {
   id?: string;
@@ -13,13 +14,20 @@ export interface ProgramExercise {
   durationSeconds?: number | null;
   restSeconds?: number;
   notes?: string;
+  distanceKm?: number | null;
+  avgSpeedKmh?: number | null;
+  activityType?: string | null;
+  moduleId?: string | null;
+  moduleName?: string | null;
 }
 
 export interface WorkoutPlan {
-  key: number;
+  key: string;
   name: string;
   type: string;
-  dayOfWeek: number;
+  weeklyTarget: number;
+  durationMinutes?: number | null;
+  description?: string | null;
   templateId: string | null;
   exercises: ProgramExercise[];
 }
@@ -34,6 +42,11 @@ export interface LoggedExercise {
   weight?: number | null;
   durationSeconds?: number | null;
   notes?: string | null;
+  distanceKm?: number | null;
+  avgSpeedKmh?: number | null;
+  activityType?: string | null;
+  moduleId?: string | null;
+  moduleName?: string | null;
 }
 
 export interface LoggedWorkout {
@@ -41,20 +54,25 @@ export interface LoggedWorkout {
   name: string;
   type: string;
   templateId: string | null;
+  sourceImport?: string | null;
   date: string;
   durationMinutes: number | null;
   notes?: string;
   exercises: LoggedExercise[];
 }
 
-export const DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi'];
-export const PLAN_TITLES = ['Pecs & triceps', 'Dos & biceps', 'Jambes', 'Épaules & bras'];
-export const PLAN_ICONS = ['ti-barbell', 'ti-stretching', 'ti-walk', 'ti-weight'];
+export interface CurrentProgram {
+  weeklyMinimum: number;
+  weeklyMaximum: number;
+  sessions: WorkoutPlan[];
+  modules: WorkoutPlan[];
+  library: WorkoutPlan[];
+}
 
 export function useProgram() {
   return useQuery({
     queryKey: ['personal-program'],
-    queryFn: () => api.get<WorkoutPlan[]>('/sport/program').then(r => r.data),
+    queryFn: () => api.get<CurrentProgram>('/sport/program').then(r => r.data),
   });
 }
 
@@ -65,31 +83,12 @@ export function useWorkouts() {
   });
 }
 
-export function weekWorkouts(workouts: LoggedWorkout[], today = getLocalDateString()) {
-  const monday = new Date(`${today}T00:00:00`);
-  monday.setDate(monday.getDate() - (monday.getDay() + 6) % 7);
-  const sunday = new Date(monday);
-  sunday.setDate(sunday.getDate() + 6);
-  return workouts.filter(w => w.date >= getLocalDateString(monday) && w.date <= getLocalDateString(sunday));
-}
-
-export function planCompleted(plan: WorkoutPlan, workouts: LoggedWorkout[]) {
-  return workouts.some(w => plan.templateId ? w.templateId === plan.templateId : w.name === plan.name);
-}
-
 export function workoutFromPlan(plan: WorkoutPlan): WorkoutDraft {
   return {
     name: plan.name, type: plan.type, templateId: plan.templateId,
     date: getLocalDateString(), durationMinutes: 1, notes: '',
     savedAt: new Date().toISOString(), startedAt: new Date().toISOString(),
-    exercises: plan.exercises.map((ex): WorkoutDraftExercise => ({
-      ...ex, _id: ex.id ?? crypto.randomUUID(), templateExerciseId: ex.id,
-      performedSets: [],
-      trackingSets: ex.durationSeconds ? [] : Array.from({ length: ex.sets ?? 1 }, () => ({
-        reps: ex.reps?.toString() ?? '', weight: ex.weight?.toString() ?? '', done: false,
-      })),
-      effortDone: false,
-    })),
+    exercises: draftExercises(plan.exercises, plan.type),
   };
 }
 

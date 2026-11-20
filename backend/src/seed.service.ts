@@ -14,6 +14,11 @@ export class SeedService implements OnApplicationBootstrap {
   ) {}
 
   async onApplicationBootstrap() {
+    if (
+      process.env.NODE_ENV === 'production' &&
+      process.env.RUN_STARTUP_SEEDS !== 'true'
+    ) return;
+
     await this.seedTodos();
     await this.seedTemplates();
     await this.migrateTemplates();

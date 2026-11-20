@@ -1,4 +1,5 @@
 import { SetEntry } from '../components/SetTracker';
+import type { ProgramExercise, WorkoutPlan } from '../services/training';
 
 const STORAGE_KEY = 'operation10.workout-draft.v1';
 
@@ -26,6 +27,9 @@ export interface WorkoutDraftExercise {
   performedSets: SetEntry[];
   trackingSets?: { reps: string; weight: string; done: boolean }[];
   effortDone?: boolean;
+  activityType?: string | null;
+  moduleId?: string | null;
+  moduleName?: string | null;
 }
 
 export interface WorkoutDraft {
@@ -56,11 +60,57 @@ function isDraft(value: unknown): value is WorkoutDraft {
       (ex.trackingSets === undefined || Array.isArray(ex.trackingSets) && ex.trackingSets.every(row =>
         Boolean(row) && typeof row.reps === 'string' && typeof row.weight === 'string' && typeof row.done === 'boolean')) &&
       (ex.effortDone === undefined || typeof ex.effortDone === 'boolean') &&
+      (ex.activityType == null || typeof ex.activityType === 'string') &&
+      (ex.moduleId == null || typeof ex.moduleId === 'string') &&
+      (ex.moduleName == null || typeof ex.moduleName === 'string') &&
       ex.performedSets.every(set => Boolean(set) && Number.isInteger(set.reps) &&
         (set.weight === undefined || Number.isFinite(set.weight)))) &&
     (draft.startedAt === undefined || typeof draft.startedAt === 'string' && !Number.isNaN(Date.parse(draft.startedAt))) &&
     (draft.activeExerciseId === undefined || typeof draft.activeExerciseId === 'string') &&
     typeof draft.savedAt === 'string' && !Number.isNaN(Date.parse(draft.savedAt));
+}
+
+export function draftExercises(exercises: ProgramExercise[], type: string): WorkoutDraftExercise[] {
+  return exercises.map(ex => {
+    const activityType = ex.activityType ?? type;
+    const durationSeconds = ex.durationSeconds ?? (activityType === 'cardio' ? 0 : null);
+    return {
+      ...ex, _id: crypto.randomUUID(), templateExerciseId: ex.id, activityType, durationSeconds,
+      performedSets: [], effortDone: false,
+      trackingSets: durationSeconds != null ? [] : Array.from({ length: ex.sets ?? 1 }, () => ({
+        reps: ex.reps?.toString() ?? '', weight: ex.weight?.toString() ?? '', done: false,
+      })),
+    };
+  });
+}
+
+export function attachWorkoutModule(draft: WorkoutDraft, module: WorkoutPlan): WorkoutDraft {
+  const moduleId = crypto.randomUUID();
+  return {
+    ...draft,
+    exercises: [...draft.exercises, ...draftExercises(module.exercises, module.type).map(ex => ({
+      ...ex, moduleId, moduleName: module.name,
+    }))],
+  };
+}
+
+export function recordedWorkoutExercises(exercises: WorkoutDraftExercise[]) {
+  return exercises.filter(ex => ex.performedSets.length > 0 || ex.effortDone &&
+    ex.durationSeconds != null && Number.isInteger(ex.durationSeconds) && ex.durationSeconds > 0);
+}
+
+export function workoutExercisePayload(exercises: WorkoutDraftExercise[]) {
+  return recordedWorkoutExercises(exercises).map(ex => ({
+    name: ex.name, templateExerciseId: ex.templateExerciseId,
+    activityType: ex.activityType ?? undefined,
+    moduleId: ex.moduleId ?? undefined, moduleName: ex.moduleName ?? undefined,
+    performedSets: ex.performedSets.length ? ex.performedSets : undefined,
+    durationSeconds: ex.effortDone ? ex.durationSeconds : undefined,
+    distanceKm: ex.effortDone ? ex.distanceKm ?? undefined : undefined,
+    avgSpeedKmh: ex.effortDone && ex.distanceKm && ex.durationSeconds
+      ? Math.round(ex.distanceKm / (ex.durationSeconds / 3600) * 10) / 10 : undefined,
+    restSeconds: ex.restSeconds ?? undefined, notes: ex.notes || undefined,
+  }));
 }
 
 export function readWorkoutDraft(): { draft: WorkoutDraft | null; unavailable: boolean } {

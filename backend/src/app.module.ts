@@ -12,6 +12,10 @@ import { AuthModule } from './auth/auth.module';
 import { InitialSchema1762369200000 } from './migrations/1762369200000-InitialSchema';
 import { SessionTemplateWeeklyTarget1794043200000 } from './migrations/1794043200000-SessionTemplateWeeklyTarget';
 import { PerformedSets1794056400000 } from './migrations/1794056400000-PerformedSets';
+import { WorkoutHistoryImport1794150000000 } from './migrations/1794150000000-WorkoutHistoryImport';
+import { FlexibleTrainingProgram1794434400000 } from './migrations/1794434400000-FlexibleTrainingProgram';
+import { NutritionJournal1794524400000 } from './migrations/1794524400000-NutritionJournal';
+import { NutritionRoutine1794855600000 } from './migrations/1794855600000-NutritionRoutine';
 
 @Module({
   imports: [
@@ -21,10 +25,15 @@ import { PerformedSets1794056400000 } from './migrations/1794056400000-Performed
       useFactory: (config: ConfigService) => ({
         type: 'postgres',
         url: config.get<string>('DATABASE_URL'),
+        ssl: config.get<string>('DATABASE_CA_CERT')
+          ? { ca: config.get<string>('DATABASE_CA_CERT'), rejectUnauthorized: true }
+          : undefined,
         autoLoadEntities: true,
         synchronize: config.get<string>('NODE_ENV') !== 'production',
-        migrations: [InitialSchema1762369200000, SessionTemplateWeeklyTarget1794043200000, PerformedSets1794056400000],
-        migrationsRun: config.get<string>('NODE_ENV') === 'production',
+        migrations: [InitialSchema1762369200000, SessionTemplateWeeklyTarget1794043200000, PerformedSets1794056400000, WorkoutHistoryImport1794150000000, FlexibleTrainingProgram1794434400000, NutritionJournal1794524400000, NutritionRoutine1794855600000],
+        migrationsRun:
+          config.get<string>('NODE_ENV') === 'production' &&
+          config.get<string>('RUN_MIGRATIONS') === 'true',
       }),
     }),
     TypeOrmModule.forFeature([Todo, SessionTemplate, Exercise]),

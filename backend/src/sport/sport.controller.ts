@@ -1,8 +1,8 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, Query, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { SportService } from './sport.service';
 import { referenceProgram } from './sport.reference';
-import { CreateTemplateDto, UpdateTemplateDto, CreateSessionDto, UpdateSessionDto, ExerciseDto, UpdateExerciseDto, ImportProgramDto, UpdatePersonalProgramDto } from './sport.dto';
+import { CreateTemplateDto, UpdateTemplateDto, CreateSessionDto, UpdateSessionDto, ExerciseDto, UpdateExerciseDto, ImportProgramDto, UpdatePersonalProgramDto, ImportWorkoutHistoryDto, UpdateCurrentProgramDto, CreateProgramTemplateDto } from './sport.dto';
 
 @ApiTags('Sport')
 @Controller('sport')
@@ -15,19 +15,28 @@ export class SportController {
   @Get('program')
   getPersonalProgram() { return this.service.getPersonalProgram(); }
 
+  @Patch('program')
+  updateCurrentProgram(@Body() body: UpdateCurrentProgramDto) {
+    return this.service.updateCurrentProgram(body);
+  }
+
+  @Post('program/templates')
+  createProgramTemplate(@Body() body: CreateProgramTemplateDto) {
+    return this.service.createProgramTemplate(body);
+  }
+
   @Post('program/:key/prepare')
-  preparePersonalWorkout(@Param('key', ParseIntPipe) key: number) {
+  preparePersonalWorkout(@Param('key') key: string) {
     return this.service.preparePersonalWorkout(key);
   }
 
   @Patch('program/:key')
-  updatePersonalWorkout(@Param('key', ParseIntPipe) key: number, @Body() body: UpdatePersonalProgramDto) {
+  updatePersonalWorkout(@Param('key') key: string, @Body() body: UpdatePersonalProgramDto) {
     return this.service.preparePersonalWorkout(key, body);
   }
 
-  // ─── Contrat hebdo ──────────────────────────────────────────────────────────
   @Get('templates')
-  @ApiOperation({ summary: 'Programme type (contrat hebdo)' })
+  @ApiOperation({ summary: 'Bibliothèque de séances et modules' })
   findTemplates() { return this.service.findAllTemplates(); }
 
   @Post('templates')
@@ -56,6 +65,9 @@ export class SportController {
 
   @Post('sessions')
   createSession(@Body() body: CreateSessionDto) { return this.service.createSession(body); }
+
+  @Post('sessions/import')
+  importSessions(@Body() body: ImportWorkoutHistoryDto) { return this.service.importHistory(body); }
 
   @Patch('sessions/:id')
   updateSession(@Param('id') id: string, @Body() body: UpdateSessionDto) {

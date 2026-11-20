@@ -2,7 +2,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { useEffect, useRef, useState } from 'react';
 
 const links = [
-  { to: '/', icon: 'ti-barbell', label: 'Entraînement' },
+  { to: '/', icon: 'ti-layout-grid', label: 'Entraînement' },
   { to: '/nutrition', icon: 'ti-salad', label: 'Nutrition' },
   { to: '/stats', icon: 'ti-chart-line', label: 'Progression' },
 ];
@@ -20,7 +20,7 @@ export default function Sidebar({ onLogout, loggingOut }: {
     <header className="app-navigation">
       <div className="brand">
         <div className="brand-icon"><i className="ti ti-bolt" aria-hidden="true" /></div>
-        <div className="brand-name">operation<span>10</span></div>
+        <div className="brand-name">Gonf<span>Forge</span></div>
       </div>
       <nav className="nav" aria-label="Navigation principale">
         {links.map(({ to, icon, label }) => (
@@ -39,7 +39,9 @@ export default function Sidebar({ onLogout, loggingOut }: {
           {open && (
             <div className="more-panel" id="more-navigation">
               <NavLink to="/?view=history"><i className="ti ti-history" aria-hidden="true" /> Historique</NavLink>
-              <NavLink to="/archives"><i className="ti ti-archive" aria-hidden="true" /> Anciens contrats</NavLink>
+              <NavLink to="/?view=week"><i className="ti ti-calendar" aria-hidden="true" /> Ma semaine</NavLink>
+              <NavLink to="/import-history"><i className="ti ti-file-import" aria-hidden="true" /> Importer des séances</NavLink>
+              <NavLink to="/?view=library"><i className="ti ti-stack-2" aria-hidden="true" /> Bibliothèque de séances</NavLink>
               <button onClick={onLogout} disabled={loggingOut}><i className="ti ti-logout" aria-hidden="true" />{loggingOut ? 'Déconnexion…' : 'Se déconnecter'}</button>
             </div>
           )}

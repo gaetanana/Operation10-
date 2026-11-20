@@ -3,7 +3,10 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
 import { apiError, useWorkouts } from '../services/training';
-import { clearWorkoutDraft, readWorkoutDraft, WorkoutDraft, WorkoutDraftExercise, writeWorkoutDraft } from '../utils/workoutDraft';
+import { attachWorkoutModule, clearWorkoutDraft, readWorkoutDraft, recordedWorkoutExercises, WorkoutDraft, WorkoutDraftExercise, workoutExercisePayload, writeWorkoutDraft } from '../utils/workoutDraft';
+import ModulePicker from '../components/ModulePicker';
+import { TYPE_CONFIG } from './SportPage';
+import { planTitle } from '../utils/trainingProgress';
 
 type TrackingRow = NonNullable<WorkoutDraftExercise['trackingSets']>[number];
 
@@ -38,6 +41,9 @@ export default function WorkoutPage() {
   const [restUntil, setRestUntil] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState('');
+  const [newKind, setNewKind] = useState('strength');
+  const [pickingModule, setPickingModule] = useState(false);
+  const [moduleError, setModuleError] = useState('');
   const [review, setReview] = useState(false);
   const [durationOverride, setDurationOverride] = useState('');
   const reviewDialog = useRef<HTMLDialogElement>(null);
@@ -75,7 +81,8 @@ export default function WorkoutPage() {
   const exercises = draft?.exercises ?? [];
   const finished = exercises.filter(isComplete).length;
   const confirmedSets = exercises.reduce((n, ex) => n + ex.performedSets.length, 0);
-  const recordedExercises = exercises.filter(ex => ex.performedSets.length || ex.effortDone);
+  const recordedExercises = recordedWorkoutExercises(exercises);
+  const recordedModules = new Set(recordedExercises.flatMap(ex => ex.moduleId ? [ex.moduleId] : [])).size;
   const unconfirmed = exercises.reduce((n, ex) => n + (ex.trackingSets?.filter(row => !row.done && row.reps.trim() !== '').length ?? 0), 0);
   const mutation = useMutation({
     mutationFn: () => {
@@ -83,12 +90,7 @@ export default function WorkoutPage() {
       return api.post('/sport/sessions', {
         name: draft.name, type: draft.type, templateId: draft.templateId ?? undefined,
         date: draft.date, durationMinutes: duration, notes: draft.notes.trim() || undefined,
-        exercises: recordedExercises.map(ex => ({
-          name: ex.name, templateExerciseId: ex.templateExerciseId,
-          performedSets: ex.performedSets.length ? ex.performedSets : undefined,
-          durationSeconds: ex.effortDone ? ex.durationSeconds : undefined,
-          restSeconds: ex.restSeconds ?? undefined, notes: ex.notes || undefined,
-        })),
+        exercises: workoutExercisePayload(exercises),
       });
     },
     onSuccess: async () => {
@@ -100,7 +102,7 @@ export default function WorkoutPage() {
     },
   });
 
-  if (!draft) return <div className="training-page history-empty"><i className="ti ti-barbell" /><h1>Quelle séance aujourd’hui ?</h1><p>Ton programme et tes charges sont prêts.</p><Link className="button button-primary" to="/">Choisir ma séance <i className="ti ti-arrow-right" /></Link></div>;
+  if (!draft) return <div className="training-page history-empty"><i className="ti ti-bolt" aria-hidden="true" /><h1>Quelle séance aujourd’hui ?</h1><p>Ton programme et tes charges sont prêts.</p><Link className="button button-primary" to="/">Choisir ma séance <i className="ti ti-arrow-right" /></Link></div>;
   const ex = exercises[active];
   const rows = ex?.trackingSets ?? [];
   const last = ex && [...(history.data ?? [])].filter(w => w.date <= draft.date)
@@ -115,9 +117,10 @@ export default function WorkoutPage() {
         <Link className="back-link" to="/"><i className="ti ti-arrow-left" /> Mon espace</Link>
         <span className="autosave-state"><span className={storageError ? 'storage-failed' : ''} />{storageError ? 'Sauvegarde indisponible' : 'Sauvegardé sur cet appareil'}</span>
       </header>
-      <div className="session-title"><div><p className="kicker">SÉANCE EN COURS</p><h1>{draft.name.replace(/^.+? · /, '')}</h1></div>
+      <div className="session-title"><div><p className="kicker">SÉANCE EN COURS</p><h1>{planTitle(draft.name)}</h1></div>
         <div className="session-time"><i className="ti ti-clock" /><strong>{elapsedMinutes}</strong><span>min</span></div></div>
       {storageError && <p className="training-error" role="alert">La sauvegarde locale a échoué. Garde cette page ouverte et termine l’enregistrement avant de quitter.</p>}
+      {moduleError && <p className="training-error" role="alert">{moduleError}</p>}
       <div className="session-progress-bar"><span style={{ width: `${exercises.length ? finished / exercises.length * 100 : 0}%` }} /></div>
       <div className="session-progress-label"><span>{finished} / {exercises.length} exercices terminés</span><strong>{confirmedSets} série{confirmedSets > 1 ? 's' : ''} validée{confirmedSets > 1 ? 's' : ''}</strong></div>
       <fieldset className="workout-fields" disabled={mutation.isPending}>
@@ -128,7 +131,7 @@ export default function WorkoutPage() {
               className={`${index === active ? 'current' : ''}${isComplete(exercise) ? ' done' : ''}`}
               aria-current={index === active ? 'step' : undefined} onClick={() => setActive(index)}>
               <span className="exercise-nav-index">{isComplete(exercise) ? <i className="ti ti-check" /> : String(index + 1).padStart(2, '0')}</span>
-              <span>{exercise.name}<small>{exercise.durationSeconds ? `${Math.round(exercise.durationSeconds / 60)} min` : `${exercise.performedSets.length} série(s) validée(s)`}</small></span>
+              <span>{exercise.name}<small>{exercise.moduleName ? `${exercise.moduleName} · ` : ''}{exercise.durationSeconds ? `${Math.round(exercise.durationSeconds / 60)} min` : `${exercise.performedSets.length} série(s) validée(s)`}</small></span>
               {index === active && <i className="ti ti-chevron-right" />}
             </button>)}</nav>
             {adding ? <form className="add-exercise-form" onSubmit={event => {
@@ -136,22 +139,49 @@ export default function WorkoutPage() {
               if (!newName.trim()) return;
               setDraft(current => current ? { ...current, exercises: [...current.exercises, {
                 _id: crypto.randomUUID(), name: newName.trim(), performedSets: [],
-                trackingSets: [{ reps: '', weight: '', done: false }],
+                activityType: newKind === 'cardio' ? 'cardio' : newKind === 'timed' ? 'emom' : draft.type,
+                durationSeconds: newKind === 'strength' ? null : 0,
+                trackingSets: newKind === 'strength' ? [{ reps: '', weight: '', done: false }] : [],
               }] } : null);
               setActive(exercises.length); setNewName(''); setAdding(false);
             }}><input aria-label="Nom du nouvel exercice" autoFocus required value={newName} maxLength={150} onChange={event => setNewName(event.target.value)} />
+              <select aria-label="Mode de suivi du nouvel exercice" value={newKind} onChange={event => setNewKind(event.target.value)}>
+                <option value="strength">Séries et répétitions</option><option value="timed">Effort chronométré / EMOM</option><option value="cardio">Course / cardio</option>
+              </select>
               <button className="text-button">Ajouter</button><button type="button" className="text-button" onClick={() => setAdding(false)}>Annuler</button></form>
               : <button className="text-button add-exercise-button" disabled={exercises.length >= 100} onClick={() => setAdding(true)}><i className="ti ti-plus" aria-hidden="true" /> Ajouter un exercice</button>}
+            <button className="text-button add-exercise-button" disabled={exercises.length >= 100} onClick={() => setPickingModule(true)}><i className="ti ti-puzzle" /> Ajouter un module</button>
           </aside>
           <section className="exercise-stage" aria-label="Exercice actif">
             {ex ? <>
-              <div className="exercise-stage-heading"><span className="kicker">EXERCICE {String(active + 1).padStart(2, '0')} / {String(exercises.length).padStart(2, '0')}</span>
+              <div className="exercise-stage-heading"><span className="kicker">{ex.moduleName ? `MODULE · ${ex.moduleName}` : `EXERCICE ${String(active + 1).padStart(2, '0')} / ${String(exercises.length).padStart(2, '0')}`}</span>
+                <button className="icon-button" disabled={active === 0} aria-label={`Remonter ${ex.name}`} onClick={() => {
+                  setDraft(current => {
+                    if (!current) return current;
+                    const next = [...current.exercises]; [next[active - 1], next[active]] = [next[active], next[active - 1]];
+                    return { ...current, exercises: next };
+                  });
+                  setActive(index => index - 1);
+                }}><i className="ti ti-arrow-up" /></button>
                 <button className="icon-button" aria-label={`Retirer ${ex.name} de cette séance`} onClick={() => {
                   if (!window.confirm(`Retirer « ${ex.name} » de cette séance ? Ses saisies seront effacées, pas ton programme.`)) return;
                   setDraft(current => current ? { ...current, exercises: current.exercises.filter((_, i) => i !== active) } : null);
                   setActive(Math.max(0, active - 1));
                 }}><i className="ti ti-x" /></button></div>
               <h2>{ex.name}</h2>
+              <details className="exercise-adjustments"><summary>Adapter cet exercice · cette séance uniquement</summary>
+                <label>Nom<input required maxLength={150} value={ex.name} onChange={event => updateExercise(active, { name: event.target.value })} /></label>
+                <label>Mode de suivi<select disabled={ex.performedSets.length > 0 || ex.effortDone} value={ex.durationSeconds == null ? 'strength' : ex.activityType === 'cardio' ? 'cardio' : 'timed'} onChange={event => {
+                  const timed = event.target.value !== 'strength';
+                  updateExercise(active, {
+                    activityType: event.target.value === 'cardio' ? 'cardio' : event.target.value === 'timed' ? 'emom' : draft.type,
+                    durationSeconds: timed ? 0 : null,
+                    trackingSets: timed ? [] : [{ reps: ex.reps?.toString() ?? '', weight: ex.weight?.toString() ?? '', done: false }],
+                  });
+                }}><option value="strength">Séries et répétitions</option><option value="timed">Effort chronométré / EMOM</option><option value="cardio">Course / cardio</option></select></label>
+                <label>Repos · secondes<input type="number" min="0" step="1" value={ex.restSeconds ?? 90} onChange={event => updateExercise(active, { restSeconds: Number(event.target.value) })} /></label>
+                <label>Consigne / notes<textarea rows={2} value={ex.notes ?? ''} onChange={event => updateExercise(active, { notes: event.target.value })} /></label>
+              </details>
               <div className="exercise-targets"><span>REPÈRE DU PROGRAMME</span><strong>{ex.weight != null ? <>{ex.weight} <small>kg</small></> : 'Poids du corps / libre'}</strong>
                 {ex.sets && <p>{ex.sets} séries{ex.reps ? ` × ${ex.reps} répétitions` : ''}</p>}</div>
               {ex.notes && <p className="exercise-instruction"><i className="ti ti-info-circle" />{ex.notes}</p>}
@@ -160,7 +190,8 @@ export default function WorkoutPage() {
 
               {ex.durationSeconds != null ? <div className="timed-effort">
                 <label>Durée réalisée · secondes<input type="number" min="1" step="1" disabled={ex.effortDone} value={ex.durationSeconds} onChange={e => updateExercise(active, { durationSeconds: Number(e.target.value) })} /></label>
-                <button className={`button ${ex.effortDone ? 'button-quiet' : 'button-primary'}`} disabled={!Number.isInteger(ex.durationSeconds) || ex.durationSeconds < 1}
+                {ex.activityType === 'cardio' && <label>Distance réalisée · km (facultatif)<input type="number" min="0" step="0.01" disabled={ex.effortDone} value={ex.distanceKm ?? ''} onChange={event => updateExercise(active, { distanceKm: event.target.value === '' ? null : Number(event.target.value) })} /></label>}
+                <button className={`button ${ex.effortDone ? 'button-quiet' : 'button-primary'}`} disabled={!Number.isInteger(ex.durationSeconds) || ex.durationSeconds < 1 || ex.distanceKm != null && (!Number.isFinite(ex.distanceKm) || ex.distanceKm < 0)}
                   onClick={() => updateExercise(active, { effortDone: !ex.effortDone })}><i className={`ti ti-${ex.effortDone ? 'check' : 'player-stop'}`} aria-hidden="true" />{ex.effortDone ? 'Effort validé · annuler' : 'Valider cet effort réalisé'}</button>
               </div> : <>
                 <div className="live-set-head"><span>SÉRIE</span><span>CHARGE · KG</span><span>RÉPÉTITIONS</span><span>FAIT</span></div>
@@ -191,6 +222,10 @@ export default function WorkoutPage() {
           </section>
         </div>
         <details className="session-settings"><summary>Notes & détails de la séance <i className="ti ti-chevron-down" /></summary>
+          <div className="session-settings-grid"><label>Nom de cette séance<input required maxLength={150} value={draft.name} onChange={event => setDraft({ ...draft, name: event.target.value })} /></label>
+            <label>Activité principale<select value={draft.type} onChange={event => setDraft({ ...draft, type: event.target.value })}>
+              {Object.entries(TYPE_CONFIG).map(([value, config]) => <option key={value} value={value}>{config.label}</option>)}
+            </select></label></div>
           <div className="session-settings-grid"><label>Date<input type="date" required value={draft.date} onChange={e => setDraft({ ...draft, date: e.target.value })} /></label>
             <label>Durée · minutes<input type="number" min="1" step="1" value={durationOverride || elapsedMinutes} onChange={e => setDurationOverride(e.target.value)} /></label></div>
           <label>Notes<textarea rows={3} placeholder="Sensations, fatigue, une remarque pour la prochaine fois…" value={draft.notes} onChange={e => setDraft({ ...draft, notes: e.target.value })} /></label>
@@ -202,20 +237,29 @@ export default function WorkoutPage() {
           }}>Abandonner la séance</button>
         </details>
         <footer className="finish-workout-bar"><div><strong>{confirmedSets} série{confirmedSets > 1 ? 's' : ''}. Ton travail.</strong><span>Seuls les efforts validés seront enregistrés.</span></div>
-          <button className="button button-primary" disabled={!recordedExercises.length || !draft.date || !validDuration} onClick={() => setReview(true)}>Terminer ma séance <i className="ti ti-check" aria-hidden="true" /></button></footer>
+          <button className="button button-primary" disabled={!recordedExercises.length || !draft.name.trim() || !draft.date || !validDuration} onClick={() => setReview(true)}>Terminer ma séance <i className="ti ti-check" aria-hidden="true" /></button></footer>
       </fieldset>
       {review && <dialog ref={reviewDialog} className="training-dialog finish-dialog" aria-labelledby="workout-review-title" onCancel={event => {
         if (mutation.isPending) event.preventDefault(); else setReview(false);
       }}>
         <header className="dialog-heading"><div><p className="kicker">LE BILAN</p><h2 id="workout-review-title">Du travail bien noté.</h2></div><button className="icon-button" disabled={mutation.isPending} aria-label="Revenir à la séance" onClick={() => setReview(false)}><i className="ti ti-x" /></button></header>
         <p className="muted">{draft.name} · {duration} min</p>
+        <p className="muted">Une seule séance sera enregistrée{recordedModules ? `, avec ${recordedModules} module(s) complémentaire(s)` : ''}.</p>
+        {recordedExercises.length > 0 && recordedExercises.every(exercise => exercise.moduleId) && <p className="finish-warning">Seuls tes modules sont validés : cette activité comptera comme une séance, mais pas comme la séance principale du programme.</p>}
         <div className="finish-metrics"><div><strong>{confirmedSets}</strong><span>séries validées</span></div><div><strong>{recordedExercises.length}</strong><span>exercices enregistrés</span></div></div>
         {(exercises.length !== recordedExercises.length || unconfirmed > 0) && <p className="finish-warning">Les exercices sans effort validé et les {unconfirmed} série(s) non cochée(s) ne seront pas enregistrés. Tu peux revenir les compléter.</p>}
         {mutation.isError && <p role="alert" className="training-error">{apiError(mutation.error, 'Enregistrement impossible. Tes saisies sont conservées. Réessaie.')}</p>}
         <footer className="dialog-actions"><button className="button button-quiet" disabled={mutation.isPending} onClick={() => setReview(false)}>Revenir à la séance</button>
-          <button className="button button-primary" disabled={mutation.isPending || !recordedExercises.length || !draft.date || !validDuration}
+          <button className="button button-primary" disabled={mutation.isPending || !recordedExercises.length || !draft.name.trim() || !draft.date || !validDuration}
             onClick={() => mutation.mutate()}>{mutation.isPending ? 'Enregistrement…' : 'Enregistrer la séance'} <i className="ti ti-check" aria-hidden="true" /></button></footer>
       </dialog>}
+      {pickingModule && <ModulePicker remaining={100 - exercises.length} onClose={() => setPickingModule(false)} onPick={module => {
+        if (exercises.length + module.exercises.length > 100) {
+          setModuleError('Ce module dépasserait la limite de 100 exercices par séance.'); return;
+        }
+        setDraft(current => current ? attachWorkoutModule(current, module) : null);
+        setActive(exercises.length); setPickingModule(false); setModuleError('');
+      }} />}
     </div>
   );
 }

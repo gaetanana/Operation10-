@@ -4,14 +4,23 @@ require('reflect-metadata');
 const { DataSource } = require('typeorm');
 const { plainToInstance } = require('class-transformer');
 const { validate } = require('class-validator');
-const { Session, SessionTemplate, Exercise, SessionType } = require('../dist/sport/sport.entity');
+const { Session, SessionTemplate, Exercise, SessionType, TrainingProgram } = require('../dist/sport/sport.entity');
 const { SportService } = require('../dist/sport/sport.service');
-const { CreateSessionDto, UpdatePersonalProgramDto } = require('../dist/sport/sport.dto');
+const { CreateSessionDto, ImportWorkoutHistoryDto, UpdatePersonalProgramDto, UpdateCurrentProgramDto, CreateProgramTemplateDto } = require('../dist/sport/sport.dto');
 const { referenceProgram } = require('../dist/sport/sport.reference');
 const { randomUUID } = require('node:crypto');
 const { InitialSchema1762369200000 } = require('../dist/migrations/1762369200000-InitialSchema');
 const { SessionTemplateWeeklyTarget1794043200000 } = require('../dist/migrations/1794043200000-SessionTemplateWeeklyTarget');
 const { PerformedSets1794056400000 } = require('../dist/migrations/1794056400000-PerformedSets');
+const { WorkoutHistoryImport1794150000000 } = require('../dist/migrations/1794150000000-WorkoutHistoryImport');
+const { FlexibleTrainingProgram1794434400000 } = require('../dist/migrations/1794434400000-FlexibleTrainingProgram');
+
+test('PostgreSQL metadata supports nullable template and module fields', async () => {
+  const source = new DataSource({ type: 'postgres', entities: [Session, SessionTemplate, Exercise, TrainingProgram] });
+  await source.buildMetadatas();
+  assert.equal(source.getMetadata(Session).findColumnWithPropertyName('templateId').type, 'varchar');
+  assert.equal(source.getMetadata(Exercise).findColumnWithPropertyName('moduleName').type, 'varchar');
+});
 
 test('nested performed sets reject invalid repetitions', async () => {
   const dto = plainToInstance(CreateSessionDto, {
@@ -21,32 +30,65 @@ test('nested performed sets reject invalid repetitions', async () => {
   assert((await validate(dto)).length > 0);
 });
 
+test('history import validates its source hash and nested workout data', async () => {
+  const valid = {
+    sourceHash: 'a'.repeat(64),
+    sessions: [{
+      name: 'Course', type: SessionType.CARDIO, date: '2026-11-08',
+      exercises: [{ name: 'Course à pied', performedSets: [{ reps: 1 }] }],
+    }],
+  };
+  assert.deepEqual(await validate(plainToInstance(ImportWorkoutHistoryDto, valid)), []);
+  assert((await validate(plainToInstance(ImportWorkoutHistoryDto, {
+    ...valid, sessions: [{ ...valid.sessions[0], exercises: [{ name: 'Course', performedSets: [{ reps: 0 }] }] }],
+  }))).length > 0);
+  assert((await validate(plainToInstance(ImportWorkoutHistoryDto, { ...valid, sourceHash: 'bad' }))).length > 0);
+});
+
 function personalProgramFixture(initial = []) {
-  const rows = structuredClone(initial);
-  const repository = {
-    async find() { return structuredClone(rows); },
-    create(data) { return { ...data }; },
+  const rows = structuredClone(initial).map(row => ({ type: SessionType.OTHER, weeklyTarget: 1, ...row }));
+  const programs = [];
+  const repositoryFor = records => ({
+    async find() { return structuredClone(records); },
+    async findOneBy(where) {
+      return structuredClone(records.find(row => Object.entries(where).every(([key, value]) => row[key] === value)) ?? null);
+    },
+    create(data) { return { weeklyTarget: 1, dayOfWeek: 0, ...data }; },
     async save(data) {
       const saved = { ...data, id: data.id ?? randomUUID() };
-      const index = rows.findIndex(row => row.id === saved.id);
-      if (index < 0) rows.push(saved); else rows[index] = saved;
+      const index = records.findIndex(row => row.id === saved.id);
+      if (index < 0) records.push(saved); else records[index] = saved;
       return structuredClone(saved);
     },
-    manager: {
-      async transaction(fn) {
-        return fn({ query: async () => [], getRepository: () => repository });
-      },
+    async remove(row) { records.splice(records.findIndex(record => record.id === row.id), 1); },
+  });
+  const repository = repositoryFor(rows);
+  const programRepo = repositoryFor(programs);
+  const manager = {
+    query: async () => [],
+    getRepository: entity => entity === TrainingProgram ? programRepo : repository,
+    async transaction(fn) {
+      const snapshot = structuredClone({ rows, programs });
+      try { return await fn(manager); } catch (error) {
+        rows.splice(0, rows.length, ...snapshot.rows);
+        programs.splice(0, programs.length, ...snapshot.programs);
+        throw error;
+      }
     },
   };
-  return { service: new SportService({}, repository, {}), rows };
+  repository.manager = manager;
+  return { service: new SportService({}, repository, {}, programRepo), rows, programs };
 }
 
 test('personal programme is readable without creating templates or performances', async () => {
   const { service, rows } = personalProgramFixture([{ id: randomUUID(), name: 'Legacy', templateExercises: [] }]);
   const program = await service.getPersonalProgram();
-  assert.equal(program.length, 4);
-  assert.deepEqual(program.map(p => p.exercises[0].weight), [32, 25, 150, 47.5]);
-  assert(program.every(p => p.templateId === null));
+  assert.equal(program.sessions.length, 4);
+  assert.equal(program.weeklyMinimum, 4);
+  assert.equal(program.weeklyMaximum, 7);
+  assert.deepEqual(program.sessions.map(p => p.exercises[0].weight), [32, 25, 150, 47.5]);
+  assert(program.sessions.every(p => p.templateId === null));
+  assert.equal(program.library.length, 5);
   assert.equal(rows.length, 1, 'Reading must not write or delete templates');
 });
 
@@ -77,8 +119,8 @@ test('existing imports are reused and edits retain exercise identity and old tem
     exercises: [{ id: exerciseId, name: 'DC haltères', weight: 36, sets: 3, reps: 8 }],
   });
   assert.equal(updated.exercises[0].id, exerciseId);
-  assert.equal((await service.getPersonalProgram())[0].exercises[0].weight, 36);
-  assert.equal(rows.length, 2);
+  assert.equal((await service.getPersonalProgram()).sessions[0].exercises[0].weight, 36);
+  assert.equal(rows.length, 5, 'The four reference templates and legacy template are preserved');
   assert.equal(rows.find(t => t.id === oldId).templateExercises[0].weight, 99);
 });
 
@@ -102,13 +144,107 @@ test('old imported finishers gain a duration without overriding an explicit choi
       { id: randomUUID(), name: 'EMOM pompes', notes: 'Finisher' },
     ],
   }]);
-  const plan = (await service.getPersonalProgram())[0];
+  const plan = (await service.getPersonalProgram()).sessions[0];
   assert.equal(plan.exercises[0].durationSeconds, 600);
   const updated = await service.preparePersonalWorkout(0, {
     exercises: [{ ...plan.exercises[0], durationSeconds: null }],
   });
   assert.equal(updated.exercises[0].durationSeconds, null);
-  assert.equal((await service.getPersonalProgram())[0].exercises[0].durationSeconds, null);
+  assert.equal((await service.getPersonalProgram()).sessions[0].exercises[0].durationSeconds, null);
+});
+
+test('programme membership and order can change without rewriting legacy workouts', async () => {
+  const legacyId = randomUUID();
+  const { service, rows, programs } = personalProgramFixture([
+    { id: legacyId, name: 'Evening run', type: SessionType.CARDIO, templateExercises: [{ id: randomUUID(), name: 'Run', durationSeconds: 1800 }] },
+  ]);
+  const result = await service.updateCurrentProgram({
+    sessionKeys: ['reference-2', 'reference-0', 'reference-1', 'reference-3'],
+    moduleKeys: [legacyId], weeklyMinimum: 4, weeklyMaximum: 6,
+  });
+  assert.equal(result.sessions[0].type, SessionType.JAMBES);
+  assert.equal(result.modules[0].templateId, legacyId);
+  assert.equal(result.weeklyMaximum, 6);
+  assert.equal(programs.length, 1);
+  assert.equal(rows.length, 5);
+  const renamed = await service.preparePersonalWorkout(result.sessions[0].key, {
+    name: 'Legs whenever', exercises: result.sessions[0].exercises,
+  });
+  assert.equal((await service.getPersonalProgram()).sessions[0].name, 'Legs whenever');
+  assert.equal(renamed.templateId, result.sessions[0].templateId);
+  const library = (await service.getPersonalProgram()).library;
+  assert.equal(library.length, rows.length, 'Renaming a reference must not recreate its old virtual name');
+  assert(!library.some(plan => plan.name === referenceProgram[2].name));
+  await assert.rejects(service.updateCurrentProgram({
+    sessionKeys: [legacyId], moduleKeys: [legacyId], weeklyMinimum: 4, weeklyMaximum: 7,
+  }), /une fois/);
+  await assert.rejects(service.updateCurrentProgram({
+    sessionKeys: [legacyId], moduleKeys: [], weeklyMinimum: 7, weeklyMaximum: 4,
+  }), /minimum/);
+  assert.equal((await service.getPersonalProgram()).sessions[0].name, 'Legs whenever');
+});
+
+test('custom sessions and reusable modules join the same current programme', async () => {
+  const { service, rows } = personalProgramFixture();
+  const module = await service.createProgramTemplate({
+    role: 'module', name: 'EMOM test', type: SessionType.EMOM,
+    exercises: [{ name: 'Push-ups', durationSeconds: 600 }],
+  });
+  const session = await service.createProgramTemplate({
+    role: 'session', name: 'Extra session', type: SessionType.OTHER,
+    exercises: [{ name: 'Extra lift', sets: 3, reps: 8 }],
+  });
+  const program = await service.getPersonalProgram();
+  assert.equal(program.sessions.length, 5);
+  assert.equal(program.modules.length, 1);
+  assert.equal(program.modules[0].templateId, module.templateId);
+  assert.equal((await service.preparePersonalWorkout(session.key)).name, 'Extra session');
+  assert.equal(rows.length, 6);
+  await service.removeTemplate(module.templateId);
+  assert.equal((await service.getPersonalProgram()).modules.length, 0);
+  assert.equal((await service.getPersonalProgram()).sessions.length, 5);
+});
+
+test('default reference names cannot be duplicated by creating a custom workout', async () => {
+  const { service, rows, programs } = personalProgramFixture();
+  await assert.rejects(service.createProgramTemplate({
+    role: 'session', name: referenceProgram[0].name, type: SessionType.PECS_TRICEPS,
+    exercises: [{ name: 'Lift' }],
+  }), /déjà/);
+  assert.equal(rows.length, 0);
+  assert.equal(programs.length, 0);
+});
+
+test('flexible programme and module fields are validated', async () => {
+  assert.deepEqual(await validate(plainToInstance(UpdateCurrentProgramDto, {
+    sessionKeys: ['reference-0'], moduleKeys: [], weeklyMinimum: 4, weeklyMaximum: 7,
+  })), []);
+  for (const body of [
+    { sessionKeys: [], moduleKeys: [], weeklyMinimum: 4, weeklyMaximum: 7 },
+    { sessionKeys: ['reference-0', 'reference-0'], moduleKeys: [], weeklyMinimum: 4, weeklyMaximum: 7 },
+    { sessionKeys: ['reference-9'], moduleKeys: [], weeklyMinimum: 4, weeklyMaximum: 7 },
+    { sessionKeys: ['reference-0'], moduleKeys: [], weeklyMinimum: 4, weeklyMaximum: 8 },
+  ]) assert((await validate(plainToInstance(UpdateCurrentProgramDto, body))).length > 0);
+  assert.deepEqual(await validate(plainToInstance(CreateSessionDto, {
+    name: 'With module', type: SessionType.OTHER, date: '2026-11-11',
+    exercises: [{ name: 'Run', activityType: SessionType.CARDIO, moduleId: randomUUID(), moduleName: 'Running', durationSeconds: 1200, distanceKm: 3 }],
+  })), []);
+  assert((await validate(plainToInstance(CreateProgramTemplateDto, {
+    role: 'module', name: ' ', type: SessionType.EMOM, exercises: [{ name: ' ' }],
+  }))).length > 0);
+  assert((await validate(plainToInstance(CreateSessionDto, {
+    name: 'Invalid module', type: SessionType.OTHER, date: '2026-11-11',
+    exercises: [{ name: 'Run', activityType: 'invalid', moduleId: 'invalid' }],
+  }))).length > 0);
+});
+
+test('renaming a reference cannot duplicate an unprepared reference name', async () => {
+  const { service, rows, programs } = personalProgramFixture();
+  await assert.rejects(service.preparePersonalWorkout('reference-0', {
+    name: referenceProgram[1].name, exercises: [{ name: 'Lift' }],
+  }), /déjà/);
+  assert.equal(rows.length, 0);
+  assert.equal(programs.length, 0);
 });
 
 test('strength progress uses actual performed sets, not planned summary weights', async () => {
@@ -152,7 +288,7 @@ test('PostgreSQL migrations preserve old rows; imports and sessions are atomic',
   assert.equal(url.pathname, '/operation10_sport_test', 'Use a dedicated test database');
   assert(['localhost', '127.0.0.1'].includes(url.hostname), 'Only local test databases are allowed');
   const options = {
-    type: 'postgres', url: url.toString(), entities: [Session, SessionTemplate, Exercise],
+    type: 'postgres', url: url.toString(), entities: [Session, SessionTemplate, Exercise, TrainingProgram],
     synchronize: false,
   };
   let ds = new DataSource({ ...options, migrations: [InitialSchema1762369200000] });
@@ -163,13 +299,15 @@ test('PostgreSQL migrations preserve old rows; imports and sessions are atomic',
     await ds.destroy();
     ds = new DataSource({ ...options, migrations: [
       InitialSchema1762369200000, SessionTemplateWeeklyTarget1794043200000, PerformedSets1794056400000,
+      WorkoutHistoryImport1794150000000,
+      FlexibleTrainingProgram1794434400000,
     ] });
     await ds.initialize();
     await ds.runMigrations();
     const templates = ds.getRepository(SessionTemplate);
     const sessions = ds.getRepository(Session);
     const exercises = ds.getRepository(Exercise);
-    const service = new SportService(sessions, templates, exercises);
+    const service = new SportService(sessions, templates, exercises, ds.getRepository(TrainingProgram));
     assert.equal((await templates.findOneByOrFail({ name: 'Legacy' })).weeklyTarget, 1);
     const program = { templates: [{
       name: 'Test programme', type: SessionType.PECS_TRICEPS, weeklyTarget: 1,
@@ -216,10 +354,39 @@ test('PostgreSQL migrations preserve old rows; imports and sessions are atomic',
       name: 'Rollback session', type: SessionType.OTHER, date: '2026-11-07',
       exercises: [{ name: 'Invalid exercise', templateExerciseId: 'not-a-uuid' }],
     }));
-    assert.equal(await sessions.count(), 1, 'Failed exercise must roll back its session');
+    assert.equal(await sessions.count(), 2, 'Failed exercise must roll back its session');
     await service.updateExercise(actual.exercises[0].id, { performedSets: [], name: 'Test lift' });
     assert.equal((await exercises.findOneByOrFail({ id: actual.exercises[0].id })).weight, null);
     assert.deepEqual(await service.getStrengthProgress(), [], 'Removing performed sets removes the progress point');
+    const history = {
+      sourceHash: 'a'.repeat(64),
+      sessions: [{
+        name: 'Imported run', type: SessionType.CARDIO, date: '2026-11-08',
+        exercises: [{ name: 'Run', durationSeconds: 2856, distanceKm: 10.01 }],
+      }],
+    };
+    assert.deepEqual(await service.importHistory(history), { imported: 1, duplicate: false });
+    assert.deepEqual(await service.importHistory(history), { imported: 1, duplicate: true });
+    assert.equal(await sessions.count(), 3, 'Replaying a history import must not create duplicates');
+    const imported = await sessions.findOneByOrFail({ sourceImport: history.sourceHash, sourceIndex: 0 });
+    assert.equal(imported.exercises[0].distanceKm, 10.01);
+    const module = await service.createProgramTemplate({
+      role: 'module', name: 'Running module', type: SessionType.CARDIO,
+      exercises: [{ name: 'Run', durationSeconds: 1800 }],
+    });
+    assert.equal(await sessions.count(), 3, 'Programme edits never create performances');
+    const moduleId = randomUUID();
+    const combined = await service.createSession({
+      name: 'Strength and running', type: SessionType.PECS_TRICEPS, date: '2026-11-11',
+      exercises: [
+        { name: 'Lift', performedSets: [{ reps: 8, weight: 20 }] },
+        { name: 'Run', activityType: SessionType.CARDIO, moduleId, moduleName: module.name, durationSeconds: 1200, distanceKm: 3 },
+      ],
+    });
+    assert.equal(await sessions.count(), 4, 'Attached modules create only one session');
+    assert.equal((await service.findSessionById(combined.id)).exercises[1].moduleId, moduleId);
+    const [security] = await ds.query("SELECT relrowsecurity FROM pg_class WHERE relname = 'training_programs'");
+    assert.equal(security.relrowsecurity, true);
   } finally {
     if (ds.isInitialized) await ds.destroy();
   }

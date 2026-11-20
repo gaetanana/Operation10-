@@ -1,0 +1,7 @@
+.env*
+.deployment-secrets
+**/node_modules
+backend/dist
+frontend/dist
+reports
+research_notes

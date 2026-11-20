@@ -1,6 +1,6 @@
 import {
-  Entity, PrimaryGeneratedColumn, Column, CreateDateColumn,
-  OneToMany, ManyToOne, JoinColumn,
+  Entity, PrimaryColumn, PrimaryGeneratedColumn, Column, CreateDateColumn,
+  OneToMany, ManyToOne, JoinColumn, Index,
 } from 'typeorm';
 
 export enum SessionType {
@@ -20,7 +20,24 @@ export interface PerformedSet {
   weight?: number;
 }
 
-// Contrat hebdo (programme type)
+@Entity('training_programs')
+export class TrainingProgram {
+  @PrimaryColumn({ type: 'varchar', length: 32 })
+  id: string;
+
+  @Column({ type: 'jsonb', default: '[]' })
+  sessionTemplateIds: string[];
+
+  @Column({ type: 'jsonb', default: '[]' })
+  moduleTemplateIds: string[];
+
+  @Column({ type: 'int', default: 4 })
+  weeklyMinimum: number;
+
+  @Column({ type: 'int', default: 7 })
+  weeklyMaximum: number;
+}
+
 @Entity('session_templates')
 export class SessionTemplate {
   @PrimaryGeneratedColumn('uuid')
@@ -44,7 +61,6 @@ export class SessionTemplate {
   @Column({ nullable: true })
   description: string;
 
-  // Exercices types du contrat (programme indicatif)
   @Column({ type: 'jsonb', nullable: true, default: '[]' })
   templateExercises: {
     id: string;
@@ -57,17 +73,24 @@ export class SessionTemplate {
     distanceKm?: number;
     avgSpeedKmh?: number;
     notes?: string;
+    activityType?: SessionType;
+    moduleId?: string;
+    moduleName?: string;
   }[];
 }
 
 // Séance réellement réalisée — déclarée AVANT Exercise pour éviter la ref circulaire
 @Entity('sessions')
+@Index('UQ_sessions_source_import_index', ['sourceImport', 'sourceIndex'], {
+  unique: true,
+  where: '"sourceImport" IS NOT NULL',
+})
 export class Session {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ nullable: true })
-  templateId: string;
+  @Column({ type: 'varchar', nullable: true })
+  templateId: string | null;
 
   @Column()
   name: string;
@@ -83,6 +106,12 @@ export class Session {
 
   @Column({ nullable: true })
   notes: string;
+
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  sourceImport: string | null;
+
+  @Column({ type: 'int', nullable: true })
+  sourceIndex: number | null;
 
   @OneToMany(() => Exercise, (e) => e.session, { cascade: true, eager: true })
   exercises: Exercise[];
@@ -133,6 +162,15 @@ export class Exercise {
 
   @Column({ type: 'float', nullable: true })
   avgSpeedKmh: number; // cardio : vitesse moyenne km/h (peut être calculée)
+
+  @Column({ type: 'varchar', length: 30, nullable: true })
+  activityType: SessionType | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  moduleId: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  moduleName: string | null;
 
   @Column({ nullable: true })
   notes: string;

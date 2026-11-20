@@ -7,7 +7,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 
-async function bootstrap() {
+export async function createApp() {
   const isProduction = process.env.NODE_ENV === 'production';
   const appOrigin = process.env.APP_ORIGIN;
   if (isProduction) {
@@ -75,8 +75,8 @@ async function bootstrap() {
 
   if (!isProduction) {
     const config = new DocumentBuilder()
-      .setTitle('Operation10 API')
-      .setDescription('API du projet Operation10 — Rennes')
+      .setTitle('GonfForge API')
+      .setDescription('API de suivi des entraînements, de la nutrition et de la progression')
       .setVersion('1.0')
       .build();
     const document = SwaggerModule.createDocument(app, config);
@@ -95,7 +95,18 @@ async function bootstrap() {
     });
   }
 
+  return app;
+}
+
+async function bootstrap() {
+  const app = await createApp();
   await app.listen(process.env.PORT ?? 3000);
   console.log(`🚀 Backend démarré sur http://localhost:${process.env.PORT ?? 3000}`);
 }
-bootstrap();
+
+if (require.main === module) {
+  bootstrap().catch((error) => {
+    console.error('Backend startup failed:', error);
+    process.exitCode = 1;
+  });
+}

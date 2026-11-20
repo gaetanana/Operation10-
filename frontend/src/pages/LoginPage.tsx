@@ -22,7 +22,7 @@ export default function LoginPage({ onLogin }: { onLogin: () => void }) {
       <section className="login-card">
         <div className="brand-icon login-icon"><i className="ti ti-flame" /></div>
         <p className="brand-sub">TON ESPACE PERSONNEL</p>
-        <h1 className="page-title">Content de te revoir</h1>
+        <h1 className="page-title">GonfForge</h1>
         <p className="page-sub">Entre ton mot de passe pour retrouver ton suivi.</p>
         <form onSubmit={submit}>
           <label className="login-label" htmlFor="owner-password">Mot de passe</label>

@@ -1,9 +1,10 @@
 {
-  "name": "operation10-frontend",
+  "name": "gonfforge-frontend",
   "version": "0.1.0",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "test": "node --test",
     "preview": "vite preview"
   },
   "dependencies": {

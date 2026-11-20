@@ -6,9 +6,9 @@ import Sidebar from './components/Sidebar';
 import TrainingPage from './pages/TrainingPage';
 import WorkoutPage from './pages/WorkoutPage';
 import LoginPage from './pages/LoginPage';
-import SportPage from './pages/SportPage';
 import NutritionPage from './pages/NutritionPage';
 import StatsPage from './pages/StatsPage';
+import ImportHistoryPage from './pages/ImportHistoryPage';
 import api from './services/api';
 import { clearWorkoutDraft, hasWorkoutProgress, readWorkoutDraft } from './utils/workoutDraft';
 
@@ -71,8 +71,9 @@ export default function App() {
           <Route path="/" element={<TrainingPage />} />
           <Route path="/todo" element={<Navigate to="/" replace />} />
           <Route path="/seance" element={<WorkoutPage />} />
-          <Route path="/sport" element={<Navigate to="/" replace />} />
-          <Route path="/archives" element={<SportPage />} />
+          <Route path="/sport" element={<Navigate to="/?view=week" replace />} />
+          <Route path="/archives" element={<Navigate to="/?view=library" replace />} />
+          <Route path="/import-history" element={<ImportHistoryPage />} />
           <Route path="/nutrition" element={<NutritionPage />} />
           <Route path="/revision/*" element={<Navigate to="/" replace />} />
           <Route path="/stats" element={<StatsPage />} />

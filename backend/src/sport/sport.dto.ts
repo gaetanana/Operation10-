@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsEnum, IsDateString, IsArray, ValidateNested, Min, Max, MinLength, IsInt, IsUUID, ArrayMaxSize, ArrayMinSize } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsEnum, IsDateString, IsArray, ValidateNested, Min, Max, MinLength, MaxLength, IsInt, IsUUID, IsIn, ArrayMaxSize, ArrayMinSize, ArrayUnique, Matches } from 'class-validator';
 import { Type } from 'class-transformer';
 import { SessionType } from './sport.entity';
 
@@ -7,6 +7,7 @@ import { SessionType } from './sport.entity';
 export class CreateTemplateDto {
   @IsString()
   @MinLength(1)
+  @Matches(/\S/)
   name: string;
 
   @IsEnum(SessionType)
@@ -36,6 +37,7 @@ export class UpdateTemplateDto {
   @IsOptional()
   @IsString()
   @MinLength(1)
+  @Matches(/\S/)
   name?: string;
 
   @IsOptional()
@@ -79,6 +81,7 @@ export class PerformedSetDto {
 export class ExerciseDto {
   @IsString()
   @MinLength(1)
+  @Matches(/\S/)
   name: string;
 
   @IsOptional()
@@ -130,6 +133,20 @@ export class ExerciseDto {
   @IsOptional()
   @IsUUID()
   templateExerciseId?: string;
+
+  @IsOptional()
+  @IsEnum(SessionType)
+  activityType?: SessionType;
+
+  @IsOptional()
+  @IsUUID()
+  moduleId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(150)
+  moduleName?: string;
 }
 
 export class UpdateExerciseDto extends ExerciseDto {}
@@ -140,7 +157,7 @@ export class ProgramExerciseDto extends ExerciseDto {
   id?: string;
 }
 
-export class UpdatePersonalProgramDto {
+export class UpdatePersonalProgramDto extends UpdateTemplateDto {
   @IsArray()
   @ArrayMinSize(1)
   @ArrayMaxSize(30)
@@ -155,6 +172,45 @@ export class ImportTemplateDto extends CreateTemplateDto {
   @ValidateNested({ each: true })
   @Type(() => ExerciseDto)
   exercises: ExerciseDto[];
+}
+
+export class CreateProgramTemplateDto extends ImportTemplateDto {
+  @IsIn(['session', 'module'])
+  role: 'session' | 'module';
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(30)
+  @ValidateNested({ each: true })
+  @Type(() => ExerciseDto)
+  exercises: ExerciseDto[];
+}
+
+export class UpdateCurrentProgramDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(30)
+  @ArrayUnique()
+  @IsString({ each: true })
+  @Matches(/^(?:reference-[0-3]|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i, { each: true })
+  sessionKeys: string[];
+
+  @IsArray()
+  @ArrayMaxSize(30)
+  @ArrayUnique()
+  @IsString({ each: true })
+  @Matches(/^(?:reference-[0-3]|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i, { each: true })
+  moduleKeys: string[];
+
+  @IsInt()
+  @Min(1)
+  @Max(7)
+  weeklyMinimum: number;
+
+  @IsInt()
+  @Min(1)
+  @Max(7)
+  weeklyMaximum: number;
 }
 
 export class ImportProgramDto {
@@ -200,7 +256,24 @@ export class CreateSessionDto {
   exercises?: ExerciseDto[];
 }
 
+export class ImportWorkoutHistoryDto {
+  @IsString()
+  @Matches(/^[a-f0-9]{64}$/)
+  sourceHash: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(50)
+  @ValidateNested({ each: true })
+  @Type(() => CreateSessionDto)
+  sessions: CreateSessionDto[];
+}
+
 export class UpdateSessionDto {
+  @IsOptional()
+  @IsUUID()
+  templateId?: string | null;
+
   @IsOptional()
   @IsString()
   @MinLength(1)
